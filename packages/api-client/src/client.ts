@@ -63,6 +63,7 @@ export function createApiClient(opts: ApiClientOptions) {
     },
     merchants: {
       list: () => request('GET', '/api/merchants', merchantSchema.array()),
+      create: (name: string) => request('POST', '/api/merchants', merchantSchema, { name }),
       products: (merchantId: string) => request('GET', `/api/catalog/merchant/${enc(merchantId)}`, productSchema.array()),
       createProduct: (input: { merchantId: string; name: string; description?: string; priceCents: number }) => request('POST', '/api/catalog', productSchema, input),
     },

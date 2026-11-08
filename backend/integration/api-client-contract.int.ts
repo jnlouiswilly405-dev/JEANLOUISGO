@@ -73,6 +73,8 @@ describe('api-client contract', () => {
 
     const product = await m.merchants.createProduct({ merchantId, name: 'Contract item', priceCents: 450 });
     expect(product.price_cents).toBe(450);
+    const created = await clientFor((await createUser(pool, 'MERCHANT')).token).merchants.create(`Contract Kitchen ${randomUUID().slice(0, 8)}`);
+    expect(created.active).toBe(true);
     await expect(clientFor(customer.token).orders.setStatus(order.id, 'PREPARING')).rejects.toMatchObject({ status: 403 });
   });
 
