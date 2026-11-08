@@ -1,0 +1,75 @@
+name: Stripe Sandbox E2E (manual, test mode only)
+
+# Manual only: never runs on push or pull_request, so normal CI cannot execute it.
+# The test key lives in the GitHub Environment "stripe-sandbox" (secret STRIPE_TEST_SECRET_KEY).
+# Configure that environment with required reviewers so each run needs an explicit approval.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SANDBOX to confirm this run uses a Stripe TEST key only'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stripe-sandbox-e2e
+  cancel-in-progress: false
+
+jobs:
+  stripe-sandbox-e2e:
+    if: ${{ github.event.inputs.confirm == 'SANDBOX' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: stripe-sandbox
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: multigo
+          POSTGRES_PASSWORD: multigo_test
+          POSTGRES_DB: multigo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U multigo -d multigo_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://multigo:multigo_test@localhost:5432/multigo_test
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Apply base schema
+        run: PGPASSWORD=multigo_test psql -h localhost -U multigo -d multigo_test -v ON_ERROR_STOP=1 -f database/schema.sql
+      - name: Apply migrations in order
+        run: bash database/migrate.sh
+      - name: Verify the key is a Stripe TEST key (value is never printed)
+        env:
+          STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+        run: |
+          if [ -z "$STRIPE_TEST_SECRET_KEY" ]; then
+            echo "::error::Secret STRIPE_TEST_SECRET_KEY is not configured in the stripe-sandbox environment."
+            exit 1
+          fi
+          case "$STRIPE_TEST_SECRET_KEY" in
+            sk_test_*) echo "Key format check passed (test mode)." ;;
+            *) echo "::error::STRIPE_TEST_SECRET_KEY is not an sk_test_ key. Refusing to run."; exit 1 ;;
+          esac
+      - name: Run Stripe sandbox E2E (test mode)
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+          STRIPE_SANDBOX_E2E: '1'
+        run: npm run test:int --workspace backend -- stripe-sandbox-e2e --reporter=verbose

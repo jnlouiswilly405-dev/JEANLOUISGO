@@ -14,6 +14,7 @@ import { api, createMerchant, createUser, getPool, insertOrder, orderStatus, sta
  */
 const key = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
 if (/^(sk|rk)_live_/.test(key)) throw new Error('STRIPE_LIVE_KEYS_FORBIDDEN: refusing to run against a live key');
+if (process.env.STRIPE_SANDBOX_E2E === '1' && !/^sk_test_[A-Za-z0-9]+$/.test(key)) throw new Error('STRIPE_SANDBOX_E2E=1 requires an sk_test_ key; refusing to report a silent skip as success');
 const enabled = process.env.STRIPE_SANDBOX_E2E === '1' && /^sk_test_[A-Za-z0-9]+$/.test(key);
 
 const WEBHOOK_SECRET = 'whsec_local_e2e_only';

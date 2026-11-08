@@ -29,6 +29,26 @@ npm run test:int --workspace backend -- stripe-sandbox-e2e
 Safety guards: the file throws immediately on an `sk_live_`/`rk_live_` key, only runs for `sk_test_` keys, and the backend
 provider (`readStripeSandboxConfig`) independently refuses live keys.
 
+## Environment variables
+| Variable | Used by | Value | Required |
+|---|---|---|---|
+| `DATABASE_URL` | E2E test | local/CI PostgreSQL; name must end in `_test` | yes |
+| `STRIPE_SECRET_KEY` | E2E test, backend | `sk_test_...` only; `sk_live_`/`rk_live_` abort | yes |
+| `STRIPE_SANDBOX_E2E` | E2E test | `1` to enable (otherwise skipped) | yes |
+| `STRIPE_WEBHOOK_SECRET` | backend | the automated E2E sets a throwaway value itself; real `whsec_...` (from `stripe listen`) only for the manual browser check | no (E2E) |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | customer app | `pk_test_...` only | manual browser check |
+
+If `STRIPE_SANDBOX_E2E=1` is set with a non-test key the file throws instead of silently skipping.
+
+## Manual GitHub Actions run (`.github/workflows/stripe-sandbox-e2e.yml`)
+Dispatch-only; it never runs on push or pull request, and normal CI never sets the Stripe variables
+(a unit test, `sandbox-e2e-guard.test.ts`, enforces this). Configure the credential once:
+1. Repo → Settings → Environments → New environment `stripe-sandbox`; add yourself as **required reviewer**.
+2. In that environment add secret `STRIPE_TEST_SECRET_KEY` = your Stripe **test-mode** secret key (Stripe dashboard, Test mode toggle on → Developers → API keys). Enter it only in the GitHub UI.
+3. Actions → "Stripe Sandbox E2E (manual, test mode only)" → Run workflow → type `SANDBOX` → approve the deployment.
+4. The workflow checks the key starts with `sk_test_` (without printing it), applies schema and migrations to a throwaway PostgreSQL, and runs only the E2E test.
+Status stays **NOT TESTED** until that run succeeds and its output is reviewed. GitHub masks secrets in logs; still, rotate the key if it is ever pasted anywhere else.
+
 ## Manual browser check (customer app)
 1. Run the backend with `STRIPE_SECRET_KEY` (`sk_test_`) and `STRIPE_WEBHOOK_SECRET` (from `stripe listen`) set.
 2. Run `stripe listen --forward-to localhost:4000/api/payments/webhook/stripe` (Stripe CLI, test mode).
