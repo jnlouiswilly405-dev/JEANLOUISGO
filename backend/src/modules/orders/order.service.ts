@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool, query } from '../../db/pool.js';
+import { notifyOrderStatus } from '../notifications/service.js';
 import type { Order, OrderItem, OrderStatus } from './order.types.js';
 
 const transitions: Record<OrderStatus, OrderStatus[]> = {
@@ -118,6 +119,7 @@ export async function transitionOrderForActor(id: string, next: OrderStatus, act
        RETURNING id,customer_id,merchant_id,COALESCE(driver_profile_id,driver_id) AS driver_id,
                  status,subtotal_cents,delivery_fee_cents,total_cents,currency,created_at`, [id,next]
     );
+    await notifyOrderStatus(client, id, next);
     await client.query('COMMIT');
     return mapOrder(updated.rows[0], []);
   } catch (e) {

@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { notifyDriverAssigned, notifyOrderStatus } from "../notifications/service.js";
 
 export async function offerOrderToDriver(pool: Pool, orderId: string, driverId: string) {
   const client = await pool.connect();
@@ -34,6 +35,8 @@ export async function offerOrderToDriver(pool: Pool, orderId: string, driverId: 
       `UPDATE orders SET driver_profile_id=$2 WHERE id=$1`, [orderId, driverId]
     );
     await client.query(`UPDATE orders SET status='ASSIGNED' WHERE id=$1`, [orderId]);
+    await notifyOrderStatus(client, orderId, "ASSIGNED");
+    await notifyDriverAssigned(client, orderId, driverId);
     await client.query("COMMIT");
     return assignment.rows[0];
   } catch (e) {

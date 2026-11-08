@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { notifyOrderStatus } from "../notifications/service.js";
 
 const transitions: Record<string, { next: string; event: string }> = {
   PICKUP: { next: "IN_TRANSIT", event: "PICKED_UP" },
@@ -38,6 +39,8 @@ export async function advanceDelivery(
       `UPDATE orders SET status=$2 WHERE id=$1`,
       [orderId, next],
     );
+
+    await notifyOrderStatus(client, orderId, next);
 
     const event = await client.query(
       `INSERT INTO delivery_events
