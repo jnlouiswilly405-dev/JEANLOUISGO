@@ -46,7 +46,7 @@ jobs:
           sudo apt-get install -y postgresql-client
           psql --version
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Apply base schema
         run: PGPASSWORD=multigo_test psql -h localhost -U multigo -d multigo_test -v ON_ERROR_STOP=1 -f database/schema.sql
       - name: Apply migrations in order
