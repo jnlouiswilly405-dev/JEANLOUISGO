@@ -48,3 +48,17 @@ Principle: thin clients against the existing `/api`; no backend change; no finan
 ## 4. Remaining blockers
 - Original frontend archive unavailable; byte-exact archive verification stays INCOMPLETE.
 - Owner approval for a rebuild, and the framework and design decisions.
+
+## 5. Controlled reconstruction: phases, gates and acceptance (still a plan; nothing generated)
+Rules for every phase: new files only under `apps/<role>/` and a shared package; no changes to `backend/`; existing README placeholders preserved; nothing is described as "recovered" or "original" — rebuilt code must be labelled a reconstruction; one reviewable commit per app; each phase needs written approval.
+
+| Phase | Deliverable | Acceptance gate |
+|---|---|---|
+| 0 | Owner decisions: framework, hosting, design/brand assets, supported languages (the README is French; the UI language is an owner decision) | decision record in `docs/` |
+| 1 | `packages/api-client`: typed client for the section 2 endpoints, error mapping (401/403/409/503), no secrets | type-check; contract tests against the PostgreSQL CI service using the existing integration helpers |
+| 2 | Customer app: auth, merchants/catalog, order creation, sandbox payment (publishable `pk_test_` key only), tracking | build and lint in CI; e2e happy path against the test API; Stripe test-mode only |
+| 3 | Merchant app: catalog and order status, read-only settlements | role-guard tests (a merchant cannot reach admin or driver data) |
+| 4 | Driver app: location and delivery progression, read-only earnings | same |
+| 5 | Admin app: financial summary, health, blocked outbox, unreferenced payments (read-only) | ADMIN-only enforced server-side (already covered by integration tests) |
+
+Safety: no UI calls refund, payout or settlement-creation; there are none to call. Frontends never hold secret keys. If the original archive appears, it replaces this plan and is diffed against any reconstruction.

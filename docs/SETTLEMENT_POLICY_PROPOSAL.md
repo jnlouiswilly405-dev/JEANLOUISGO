@@ -49,3 +49,22 @@ Payout run: minimum payout threshold (OWNER DECISION), batch in `payout_batches`
 4. Enable settlement creation behind its own flag.
 5. Provider payout integration (Stripe Connect or other) in sandbox, then limited live pilot after written approval.
 Until step 1 is complete, the outbox settlement handler remains `blockedSettlementHandler`.
+
+## 7. Owner decision record (to be completed by the owner; nothing is assumed)
+| # | Decision | Value | Approved by / date |
+|---|---|---|---|
+| 1 | Merchant commission basis and rate | _blank_ | |
+| 2 | Driver compensation model | _blank_ | |
+| 3 | Delivery fee ownership | _blank_ | |
+| 4 | Tax ownership and remittance | _blank_ (legal/tax review) | |
+| 5 | Tip allocation | _blank_ | |
+| 6 | Discount/promo funding | _blank_ | |
+| 7 | Rounding rule | _blank_ | |
+| 8 | Hold period before eligibility | _blank_ | |
+| 9 | Minimum payout threshold | _blank_ | |
+| 10 | Refund/chargeback allocation and recovery after payout | _blank_ | |
+| 11 | Payout provider (Stripe Connect or other) and supported countries | _blank_ | |
+
+## 8. Known defects in the unattached settlement code (fix before any activation, under separate approval)
+`createSettlementForDeliveredOrder` (in `backend/src/modules/settlements/`) currently: applies fees to the whole order total; takes fee rates from its caller; overwrites existing `ELIGIBLE` rows via upsert; and does not check payment capture. It is not wired to any route or worker; the outbox handler is `blockedSettlementHandler`, `OUTBOX_WORKER_ENABLED` defaults to false, and no endpoint creates earnings, ledger entries or payouts.
+Application refunds (`refundPayment`) still throw `REFUND_PROVIDER_NOT_IMPLEMENTED`; they stay disabled until section 4 is decided.
