@@ -27,6 +27,15 @@ export async function processNextOutboxEvent(
   let event: OutboxEvent | undefined;
   try {
     await client.query("BEGIN");
+    // An expired lease on an exhausted event means the worker died mid-handler
+    // repeatedly; block it instead of reclaiming it forever.
+    await client.query(
+      `UPDATE event_outbox
+       SET status='BLOCKED', lease_until=NULL, lease_token=NULL,
+           last_error='OUTBOX_MAX_ATTEMPTS_EXCEEDED_LEASE_EXPIRED'
+       WHERE status='PROCESSING' AND lease_until < now() AND attempts >= $1`,
+      [maxAttempts],
+    );
     const claimed = await client.query(
       `WITH candidate AS (
          SELECT id

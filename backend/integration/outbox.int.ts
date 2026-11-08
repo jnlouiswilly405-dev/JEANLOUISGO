@@ -94,6 +94,39 @@ describe('outbox worker', () => {
     expect((await row(e.id)).status).toBe('PROCESSED');
   });
 
+  it('blocks an expired-lease event that has exhausted its attempts instead of reclaiming it', async () => {
+    const e = await enqueue();
+    await pool.query(
+      "UPDATE event_outbox SET status='PROCESSING', attempts=3, lease_until=now() - interval '1 minute', lease_token=gen_random_uuid() WHERE id=$1",
+      [e.id],
+    );
+    let handled = false;
+    expect(await processNextOutboxEvent(pool, async () => { handled = true; }, 3)).toBe('EMPTY');
+    expect(handled).toBe(false);
+    const r = await row(e.id);
+    expect(r.status).toBe('BLOCKED');
+    expect(r.last_error).toBe('OUTBOX_MAX_ATTEMPTS_EXCEEDED_LEASE_EXPIRED');
+    expect(r.lease_token).toBeNull();
+    expect(await processNextOutboxEvent(pool, async () => {}, 3)).toBe('EMPTY');
+    expect((await row(e.id)).status).toBe('BLOCKED');
+  });
+
+  it('does not block an expired-lease event below the attempt limit, nor a live lease at the limit', async () => {
+    const below = await enqueue();
+    const live = await enqueue();
+    await pool.query(
+      "UPDATE event_outbox SET status='PROCESSING', attempts=2, lease_until=now() - interval '1 minute', lease_token=gen_random_uuid() WHERE id=$1",
+      [below.id],
+    );
+    await pool.query(
+      "UPDATE event_outbox SET status='PROCESSING', attempts=3, lease_until=now() + interval '5 minutes', lease_token=gen_random_uuid() WHERE id=$1",
+      [live.id],
+    );
+    expect(await processNextOutboxEvent(pool, async () => {}, 3)).toBe('PROCESSED');
+    expect((await row(below.id)).status).toBe('PROCESSED');
+    expect((await row(live.id)).status).toBe('PROCESSING');
+  });
+
   it('stops a stale worker from overwriting an event that another worker finished', async () => {
     const e = await enqueue();
     const staleResult = await processNextOutboxEvent(pool, async () => {
