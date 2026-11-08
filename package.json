@@ -13,6 +13,6 @@
     "lint": "npm run lint --workspace backend"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   }
 }
