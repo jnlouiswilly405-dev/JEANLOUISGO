@@ -22,4 +22,6 @@ Searched, with no frontend source found:
 - Pull requests: only #2 (documentation typo).
 - The local filesystem: no V45 ZIP or export file is present.
 
+Re-run on 2026-11-08 after the Stripe and Vitest work: 41 commits across all refs, no tags, no stashes, and a filesystem search for archives or V45/JEANLOUISGO-named files outside the repository. Still no frontend source (no UI files, no `apps/*/package.json`, no archives). Reconstruction plan: `FRONTEND_RECOVERY_PLAN.md`.
+
 Exactly missing: every frontend source file for the four apps (components, pages, routing, API client code, styles, assets, `package.json`, lockfile, build and test configuration). The exact original file list is unknown without the original frontend archive.
