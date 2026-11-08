@@ -8,7 +8,7 @@ import { sendMessage, listMessages } from '../chat/service.js';
 import { createReview } from '../reviews/service.js';
 import { validatePromo } from '../promos/service.js';
 import { listEligibleDriverEarnings, listEligibleMerchantSettlements } from '../settlements/service.js';
-import { getAdminOrderFinancialSummary, getSystemHealth } from '../admin/service.js';
+import { getAdminOrderFinancialSummary, getSystemHealth, listBlockedOutboxEvents } from '../admin/service.js';
 import { pool } from '../../db/pool.js';
 
 export const finalRouter = Router();
@@ -100,4 +100,9 @@ finalRouter.get('/admin/financial-summary', requireAuth, requireRole('ADMIN'), a
 });
 finalRouter.get('/admin/health', requireAuth, requireRole('ADMIN'), async (_req,res)=>{
   try { res.json(await getSystemHealth(requireDb())); } catch(e){res.status(503).json({error:e instanceof Error?e.message:'Database unavailable'});}
+});
+finalRouter.get('/admin/outbox/blocked', requireAuth, requireRole('ADMIN'), async (req,res)=>{
+  const q=z.object({eventType:z.string().min(1).max(100).optional(),aggregateId:z.string().uuid().optional(),limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0)}).safeParse(req.query);
+  if(!q.success)return res.status(400).json({error:q.error.issues});
+  try { res.json(await listBlockedOutboxEvents(requireDb(), q.data)); } catch(e){res.status(503).json({error:'Outbox events unavailable'});}
 });
