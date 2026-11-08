@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from '../../middleware/auth.js';
 import { recordDriverLocation, getOrderTracking } from '../tracking/service.js';
 import { advanceDelivery } from '../delivery/service.js';
 import { createNotification, listNotifications, markNotificationRead } from '../notifications/service.js';
-import { sendMessage, listMessages } from '../chat/service.js';
+import { sendMessage, listMessages, getOrCreateOrderThread, listThreadsForUser } from '../chat/service.js';
 import { createReview } from '../reviews/service.js';
 import { validatePromo } from '../promos/service.js';
 import { listEligibleDriverEarnings, listEligibleMerchantSettlements } from '../settlements/service.js';
@@ -50,13 +50,21 @@ finalRouter.post('/notifications/:id/read', requireAuth, async (req,res)=>{
   try { res.json(await markNotificationRead(requireDb(),req.user!.id,req.params.id as string)); } catch(e){res.status(404).json({error:e instanceof Error?e.message:'Notification not found'});}
 });
 
+finalRouter.get('/chat/threads', requireAuth, async (req,res)=>{
+  try { res.json(await listThreadsForUser(requireDb(),req.user!.id)); } catch(e){res.status(503).json({error:e instanceof Error?e.message:'Chat unavailable'});}
+});
+finalRouter.post('/orders/:orderId/chat', requireAuth, async (req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.orderId).success)return res.status(400).json({error:'Invalid order id'});
+  try { res.json(await getOrCreateOrderThread(requireDb(),req.params.orderId as string,req.user!.id)); }
+  catch(e){const m=e instanceof Error?e.message:'Chat unavailable';res.status(m==='ORDER_NOT_FOUND'?404:m==='CHAT_NOT_AVAILABLE'?409:503).json({error:m});}
+});
 finalRouter.get('/chat/:threadId/messages', requireAuth, async (req,res)=>{
   try { res.json(await listMessages(requireDb(),req.params.threadId as string,req.user!.id)); } catch(e){res.status(403).json({error:e instanceof Error?e.message:'Chat unavailable'});}
 });
 finalRouter.post('/chat/:threadId/messages', requireAuth, async (req,res)=>{
   const s=z.object({body:z.string().min(1).max(4000),messageType:z.string().max(30).optional()}).safeParse(req.body);
   if(!s.success)return res.status(400).json({error:s.error.issues});
-  try { res.status(201).json(await sendMessage(requireDb(),req.params.threadId as string,req.user!.id,s.data.body,s.data.messageType)); } catch(e){res.status(403).json({error:e instanceof Error?e.message:'Message failed'});}
+  try { res.status(201).json(await sendMessage(requireDb(),req.params.threadId as string,req.user!.id,s.data.body,s.data.messageType)); } catch(e){const m=e instanceof Error?e.message:'Message failed';res.status(m==='THREAD_CLOSED'?409:403).json({error:m});}
 });
 
 finalRouter.post('/reviews', requireAuth, requireRole('CUSTOMER','ADMIN'), async (req,res)=>{
