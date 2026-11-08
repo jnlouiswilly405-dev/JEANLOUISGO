@@ -20,8 +20,14 @@ export function ReviewForm({ orderId, merchantId }: { orderId: string; merchantI
       await client.reviews.create({ orderId, rating, merchantId, ...(text ? { body: text } : {}) });
       setDone(true);
     } catch (err) {
-      // 409 covers a duplicate review; the raw backend text names a database constraint and is not shown.
-      setError(err instanceof ApiError && err.status === 409 ? 'You have already reviewed this order.' : err instanceof Error ? err.message : 'Could not send the review');
+      // The backend returns stable codes; raw text is never shown.
+      const text = err instanceof Error ? err.message : '';
+      setError(
+        text.includes('REVIEW_ALREADY_EXISTS') ? 'You have already reviewed this order.'
+        : text.includes('ORDER_NOT_DELIVERED') ? 'You can review an order only after it is delivered.'
+        : err instanceof ApiError && err.status === 403 ? 'Only the customer who placed the order can review it.'
+        : 'Could not send the review.',
+      );
     } finally {
       setBusy(false);
     }

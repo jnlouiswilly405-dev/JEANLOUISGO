@@ -62,7 +62,7 @@ finalRouter.post('/chat/:threadId/messages', requireAuth, async (req,res)=>{
 finalRouter.post('/reviews', requireAuth, requireRole('CUSTOMER','ADMIN'), async (req,res)=>{
   const s=z.object({orderId:z.string().uuid(),rating:z.number().int().min(1).max(5),body:z.string().max(5000).optional(),subjectUserId:z.string().uuid().optional(),merchantId:z.string().uuid().optional()}).safeParse(req.body);
   if(!s.success)return res.status(400).json({error:s.error.issues});
-  try { res.status(201).json(await createReview(requireDb(),s.data.orderId,req.user!.id,s.data.rating,s.data.body,s.data.subjectUserId,s.data.merchantId)); } catch(e){res.status(409).json({error:e instanceof Error?e.message:'Review failed'});}
+  try { res.status(201).json(await createReview(requireDb(),s.data.orderId,req.user!.id,s.data.rating,s.data.body,s.data.subjectUserId,s.data.merchantId)); } catch(e){const m=e instanceof Error?e.message:'Review failed';const code=m==='ORDER_NOT_FOUND'?404:m==='REVIEW_FORBIDDEN'?403:m==='INVALID_RATING'?400:409;res.status(code).json({error:m});}
 });
 
 finalRouter.post('/promos/validate', requireAuth, async (req,res)=>{

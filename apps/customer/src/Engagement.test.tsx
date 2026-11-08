@@ -59,11 +59,17 @@ describe('ReviewForm', () => {
     expect(calls.find((c) => c.key === 'POST /api/reviews')?.body).toEqual({ orderId, rating: 4, merchantId, body: 'Tasty' });
   });
 
-  it('omits an empty comment and hides the database error on a duplicate (409)', async () => {
-    const calls = mount(<ReviewForm orderId={orderId} merchantId={merchantId} />, { 'POST /api/reviews': () => json(409, { error: 'duplicate key value violates unique constraint "reviews_order_id_reviewer_id_key"' }) });
+  it('omits an empty comment and shows a friendly message on a duplicate (409)', async () => {
+    const calls = mount(<ReviewForm orderId={orderId} merchantId={merchantId} />, { 'POST /api/reviews': () => json(409, { error: 'REVIEW_ALREADY_EXISTS' }) });
     await userEvent.click(await screen.findByRole('button', { name: 'Send review' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('You have already reviewed this order.');
     expect(screen.queryByText(/constraint/)).not.toBeInTheDocument();
     expect(calls.find((c) => c.key === 'POST /api/reviews')?.body).toEqual({ orderId, rating: 5, merchantId });
+  });
+
+  it('explains a not-delivered rejection', async () => {
+    mount(<ReviewForm orderId={orderId} merchantId={merchantId} />, { 'POST /api/reviews': () => json(409, { error: 'ORDER_NOT_DELIVERED' }) });
+    await userEvent.click(await screen.findByRole('button', { name: 'Send review' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('only after it is delivered');
   });
 });
