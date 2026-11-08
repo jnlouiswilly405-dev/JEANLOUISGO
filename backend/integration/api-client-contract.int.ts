@@ -97,6 +97,8 @@ describe('api-client contract', () => {
     expect(await orderStatus(pool, orderId)).toBe('IN_TRANSIT');
     await expect(d.orders.advanceDelivery(orderId, 'PICKED_UP')).rejects.toMatchObject({ status: 409 });
     await d.orders.advanceDelivery(orderId, 'DELIVERED');
+    // Delivery enqueues a SETTLEMENT_REQUESTED outbox row; remove it so the outbox suites see a clean table.
+    await pool.query('DELETE FROM event_outbox WHERE aggregate_id=$1', [orderId]);
     expect(await orderStatus(pool, orderId)).toBe('DELIVERED');
     expect((await clientFor(customer.token).orders.tracking(orderId)).length).toBe(1);
 
