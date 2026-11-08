@@ -1,6 +1,6 @@
 # Report-only reconciliation design: stripe payments without a provider reference
 
-Design only. Nothing here is implemented and webhook financial behaviour is unchanged (an early webhook still returns 400 and Stripe retries).
+Status: the report-only endpoint described below is implemented (`GET /api/admin/payments/unreferenced`, read-only, ADMIN only). Webhook financial behaviour is unchanged (an early webhook still returns 400 and Stripe retries).
 Context: `WEBHOOK_EARLY_ARRIVAL_RACE.md`.
 
 ## Goal

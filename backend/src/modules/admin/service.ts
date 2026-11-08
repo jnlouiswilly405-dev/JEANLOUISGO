@@ -79,3 +79,41 @@ export async function listBlockedOutboxEvents(pool: Pool, filters: BlockedOutbox
     offset,
   };
 }
+
+export type UnreferencedPaymentFilters = { olderThanMinutes?: number; limit?: number; offset?: number };
+
+/**
+ * Read-only report of stripe payments left PENDING without a provider reference (crash or ambiguous
+ * network error after the attempt was recorded). Never writes; idempotency keys are intentionally not selected.
+ */
+export async function listUnreferencedStripePayments(pool: Pool, filters: UnreferencedPaymentFilters = {}) {
+  const minutes = Math.min(Math.max(filters.olderThanMinutes ?? 15, 0), 10080);
+  const limit = Math.min(Math.max(filters.limit ?? 50, 1), 100);
+  const offset = Math.max(filters.offset ?? 0, 0);
+  const where = `p.provider='stripe' AND p.status='PENDING' AND p.provider_reference IS NULL
+                 AND p.created_at < now() - make_interval(mins => $1)`;
+  const total = await pool.query(`SELECT count(*)::int AS n FROM payments p WHERE ${where}`, [minutes]);
+  const { rows } = await pool.query(
+    `SELECT p.id, p.order_id, p.amount_cents, o.currency, p.created_at,
+            floor(extract(epoch FROM (now() - p.created_at)) / 60)::int AS age_minutes
+     FROM payments p JOIN orders o ON o.id = p.order_id
+     WHERE ${where}
+     ORDER BY p.created_at, p.id
+     LIMIT $2 OFFSET $3`,
+    [minutes, limit, offset],
+  );
+  return {
+    items: rows.map((r) => ({
+      paymentId: r.id,
+      orderId: r.order_id,
+      amountCents: r.amount_cents,
+      currency: r.currency,
+      createdAt: r.created_at,
+      ageMinutes: r.age_minutes,
+    })),
+    total: total.rows[0].n as number,
+    limit,
+    offset,
+    olderThanMinutes: minutes,
+  };
+}
