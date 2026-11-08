@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from '../../middleware/auth.js';
 import { createOrder, getOrderForActor, listOrdersForActor, transitionOrderForActor } from './order.service.js';
 
 export const orderRouter=Router();
-const createSchema=z.object({customerId:z.string().uuid().optional(),merchantId:z.string().uuid(),items:z.array(z.object({productId:z.string().uuid(),quantity:z.number().int().positive()})).min(1),deliveryFeeCents:z.number().int().nonnegative().optional()});
+const createSchema=z.object({customerId:z.string().uuid().optional(),merchantId:z.string().uuid(),items:z.array(z.object({productId:z.string().uuid(),quantity:z.number().int().positive()})).min(1),deliveryFeeCents:z.number().int().nonnegative().optional(),promoCode:z.string().trim().min(1).max(64).optional()});
 const statusSchema=z.object({status:z.enum(['PAID','ACCEPTED','PREPARING','READY','ASSIGNED','PICKED_UP','IN_TRANSIT','DELIVERED','CANCELLED','REFUNDED'])});
 
 orderRouter.get('/', requireAuth, async (req,res)=>{ try { res.json(await listOrdersForActor(req.user!)); } catch { res.status(503).json({error:'Database unavailable'}); } });

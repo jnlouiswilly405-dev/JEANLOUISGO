@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pool, query } from '../../db/pool.js';
 import { notifyOrderStatus } from '../notifications/service.js';
+import { redeemPromoForOrder, releasePromoForOrder } from '../promos/service.js';
 import type { Order, OrderItem, OrderStatus } from './order.types.js';
 
 const transitions: Record<OrderStatus, OrderStatus[]> = {
@@ -22,7 +23,7 @@ export function validateOrderInput(input: { items: OrderItemInput[]; deliveryFee
   if (input.deliveryFeeCents !== undefined && (!Number.isSafeInteger(input.deliveryFeeCents) || input.deliveryFeeCents < 0)) throw new Error('Delivery fee must be a non-negative integer');
 }
 
-export async function createOrder(input:{customerId:string;merchantId:string;items:OrderItemInput[];deliveryFeeCents?:number}):Promise<Order> {
+export async function createOrder(input:{customerId:string;merchantId:string;items:OrderItemInput[];deliveryFeeCents?:number;promoCode?:string}):Promise<Order> {
   if (!pool) throw new Error('DATABASE_URL is not configured');
   validateOrderInput(input);
   const client = await pool.connect();
@@ -38,15 +39,23 @@ export async function createOrder(input:{customerId:string;merchantId:string;ite
     });
     const subtotalCents = normalized.reduce((s,i)=>s+i.quantity*i.unitPriceCents,0);
     const deliveryFeeCents = input.deliveryFeeCents ?? 0;
-    const totalCents = subtotalCents + deliveryFeeCents;
-    if (!Number.isSafeInteger(subtotalCents) || !Number.isSafeInteger(totalCents) || totalCents > 2147483647) {
+    if (!Number.isSafeInteger(subtotalCents) || subtotalCents + deliveryFeeCents > 2147483647) {
       throw new Error('Order total exceeds the supported amount');
     }
     const id = randomUUID();
+    const totalCents = subtotalCents + deliveryFeeCents;
     const orderResult = await client.query(`INSERT INTO orders(id,customer_id,merchant_id,status,subtotal_cents,delivery_fee_cents,total_cents) VALUES($1,$2,$3,'PENDING_PAYMENT',$4,$5,$6) RETURNING id,customer_id,merchant_id,COALESCE(driver_profile_id, driver_id) AS driver_id,status,subtotal_cents,delivery_fee_cents,total_cents,currency,created_at`, [id,input.customerId,input.merchantId,subtotalCents,deliveryFeeCents,totalCents]);
     for (const item of normalized) await client.query('INSERT INTO order_items(order_id,product_id,name_snapshot,quantity,unit_price_cents) VALUES($1,$2,$3,$4,$5)', [id,item.productId,item.name,item.quantity,item.unitPriceCents]);
+    let row = orderResult.rows[0];
+    const promoCode = input.promoCode?.trim();
+    if (promoCode) {
+      // Same transaction as the order: the discount applies to the item subtotal only, never the delivery fee.
+      const discountCents = await redeemPromoForOrder(client, promoCode, input.customerId, id, subtotalCents);
+      if (totalCents - discountCents < 1) throw new Error('PROMO_NOT_APPLICABLE');
+      row = (await client.query('UPDATE orders SET total_cents=$2 WHERE id=$1 RETURNING id,customer_id,merchant_id,COALESCE(driver_profile_id, driver_id) AS driver_id,status,subtotal_cents,delivery_fee_cents,total_cents,currency,created_at', [id, totalCents - discountCents])).rows[0];
+    }
     await client.query('COMMIT');
-    return mapOrder(orderResult.rows[0], normalized);
+    return mapOrder(row, normalized);
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 }
 
@@ -59,6 +68,7 @@ export async function transitionOrder(id:string,next:OrderStatus):Promise<Order>
     if (!current.rowCount) throw new Error('Order not found');
     assertValidOrderTransition(current.rows[0].status, next);
     const result = await client.query('UPDATE orders SET status=$2 WHERE id=$1 RETURNING id,customer_id,merchant_id,COALESCE(driver_profile_id, driver_id) AS driver_id,status,subtotal_cents,delivery_fee_cents,total_cents,currency,created_at',[id,next]);
+    if (next === 'CANCELLED') await releasePromoForOrder(client, id);
     await client.query('COMMIT');
     return mapOrder(result.rows[0], []);
   } catch (e) { await client.query('ROLLBACK'); throw e; }
@@ -80,7 +90,7 @@ export async function listOrders(customerId?:string) {
 }
 
 function mapOrder(row:any, items:any[]):Order {
-  return { id:row.id, customerId:row.customer_id, merchantId:row.merchant_id, driverId:row.driver_id ?? undefined, items, subtotalCents:row.subtotal_cents, deliveryFeeCents:row.delivery_fee_cents, totalCents:row.total_cents, currency:'USD', status:row.status, createdAt:new Date(row.created_at).toISOString() };
+  return { id:row.id, customerId:row.customer_id, merchantId:row.merchant_id, driverId:row.driver_id ?? undefined, items, subtotalCents:row.subtotal_cents, deliveryFeeCents:row.delivery_fee_cents, totalCents:row.total_cents, discountCents:row.subtotal_cents+row.delivery_fee_cents-row.total_cents, currency:'USD', status:row.status, createdAt:new Date(row.created_at).toISOString() };
 }
 
 
@@ -119,6 +129,7 @@ export async function transitionOrderForActor(id: string, next: OrderStatus, act
        RETURNING id,customer_id,merchant_id,COALESCE(driver_profile_id,driver_id) AS driver_id,
                  status,subtotal_cents,delivery_fee_cents,total_cents,currency,created_at`, [id,next]
     );
+    if (next === 'CANCELLED') await releasePromoForOrder(client, id);
     await notifyOrderStatus(client, id, next);
     await client.query('COMMIT');
     return mapOrder(updated.rows[0], []);
