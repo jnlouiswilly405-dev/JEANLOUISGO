@@ -1,7 +1,7 @@
 import type { ZodType } from 'zod';
 import {
   authResultSchema, blockedOutboxSchema, healthSchema, looseRowSchema, looseRowsSchema, meSchema,
-  merchantSchema, orderSchema, paymentSchema, productSchema, unreferencedPaymentsSchema,
+  merchantSchema, orderSchema, paymentSchema, productSchema, trackingEventSchema, unreferencedPaymentsSchema,
   type OrderStatus,
 } from './schemas.js';
 
@@ -71,7 +71,7 @@ export function createApiClient(opts: ApiClientOptions) {
       get: (id: string) => request('GET', `/api/orders/${enc(id)}`, orderSchema),
       create: (input: { merchantId: string; items: { productId: string; quantity: number }[]; deliveryFeeCents?: number }) => request('POST', '/api/orders', orderSchema, input),
       setStatus: (id: string, status: Exclude<OrderStatus, 'PENDING_PAYMENT'>) => request('POST', `/api/orders/${enc(id)}/status`, orderSchema, { status }),
-      tracking: (orderId: string) => request('GET', `/api/orders/${enc(orderId)}/tracking`, looseRowSchema.or(looseRowsSchema)),
+      tracking: (orderId: string) => request('GET', `/api/orders/${enc(orderId)}/tracking`, trackingEventSchema.array()),
       advanceDelivery: (orderId: string, action: 'PICKED_UP' | 'DELIVERED') => request('POST', `/api/orders/${enc(orderId)}/delivery`, looseRowSchema, { action }),
     },
     payments: {

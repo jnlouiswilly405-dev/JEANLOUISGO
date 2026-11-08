@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 import { ApiError, createApiClient, merchantNextStatus, type ApiClient } from '../../packages/api-client/src/index.js';
-import { createMerchant, createProduct, createUser, getPool, startApi } from './helpers.js';
+import { createDriverProfile, createMerchant, createProduct, createUser, getPool, startApi } from './helpers.js';
 
 // Contract tests: the shared frontend client (real fetch, real zod schemas) against the real backend on PostgreSQL.
 let pool: Pool;
@@ -49,7 +49,12 @@ describe('api-client contract', () => {
     expect((await c.orders.list()).map((o) => o.id)).toContain(order.id);
     expect((await c.orders.get(order.id)).items[0].quantity).toBe(2);
     expect(Array.isArray(await c.notifications.list())).toBe(true);
-    await c.orders.tracking(order.id);
+    expect(await c.orders.tracking(order.id)).toEqual([]);
+    const driverProfileId = await createDriverProfile(pool, (await createUser(pool, 'DRIVER')).id);
+    await pool.query('INSERT INTO driver_location_events(driver_id,order_id,lat,lng) VALUES($1,$2,40.7128,-74.006)', [driverProfileId, order.id]);
+    const [point] = await c.orders.tracking(order.id);
+    expect(point.lat).toBeCloseTo(40.7128, 4);
+    expect(point.lng).toBeCloseTo(-74.006, 4);
   });
 
   it('merchant: sees only their orders and advances PAID -> ACCEPTED using the mapped next status', async () => {

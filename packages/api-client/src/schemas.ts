@@ -57,6 +57,13 @@ export type Payment = z.infer<typeof paymentSchema>;
 export const looseRowSchema = z.object({}).passthrough();
 export const looseRowsSchema = z.array(looseRowSchema);
 
+// NUMERIC columns reach the client as strings, hence the coercion.
+export const trackingEventSchema = z.object({
+  lat: z.coerce.number(), lng: z.coerce.number(), recorded_at: z.string(),
+  order_id: z.string().nullable().optional(), driver_id: z.string().optional(),
+}).passthrough();
+export type TrackingEvent = z.infer<typeof trackingEventSchema>;
+
 export const blockedOutboxSchema = z.object({
   items: z.array(z.object({
     id: z.string(), eventType: z.string(), aggregateType: z.string(), aggregateId: z.string(),
