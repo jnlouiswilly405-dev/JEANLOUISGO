@@ -169,6 +169,30 @@ describe('payment webhooks (mock provider)', () => {
     expect(await count("SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1 AND account_type='PLATFORM_CLEARING'", [p.orderId])).toBe(1);
   });
 
+  it('moves a PENDING payment to SUCCEEDED via webhook: order PAID, one clearing ledger entry, replay is a duplicate', async () => {
+    const pool = await getPool();
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, totalCents: 2100 });
+    const paymentId = randomUUID();
+    const providerReference = `mock_pending_${paymentId}`;
+    await pool.query(
+      "INSERT INTO payments(id,order_id,provider,provider_reference,amount_cents,status,idempotency_key) VALUES ($1,$2,'mock',$3,2100,'PENDING',$4)",
+      [paymentId, orderId, providerReference, key()],
+    );
+    const p = { paymentId, providerReference };
+    const eventId = `evt_${randomUUID()}`;
+    const first = await hook(p, eventId, 2100);
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ duplicate: false });
+    expect((await pool.query('SELECT status FROM payments WHERE id=$1', [paymentId])).rows[0].status).toBe('SUCCEEDED');
+    expect(await orderStatus(pool, orderId)).toBe('PAID');
+    const ledger = "SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1 AND account_type='PLATFORM_CLEARING' AND direction='CREDIT'";
+    expect(await count(ledger, [orderId])).toBe(1);
+    expect((await hook(p, eventId, 2100)).body).toEqual({ duplicate: true });
+    expect((await hook(p, `evt_${randomUUID()}`, 2100)).body).toEqual({ duplicate: false });
+    expect(await count(ledger, [orderId])).toBe(1);
+    expect(await count("SELECT count(*)::int n FROM driver_earnings WHERE order_id=$1", [orderId])).toBe(0);
+  });
+
   it('rejects a mismatching amount and rolls the event record back', async () => {
     const p = await paidPayment(1600);
     const eventId = `evt_${randomUUID()}`;

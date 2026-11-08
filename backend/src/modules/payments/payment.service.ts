@@ -109,7 +109,7 @@ export async function handleWebhook(input: { provider: PaymentProvider; eventId:
     if (input.status === 'SUCCEEDED' && payment.rows[0].status !== 'SUCCEEDED') {
       await client.query("UPDATE payments SET status='SUCCEEDED' WHERE id=$1",[input.paymentId]);
       await client.query("UPDATE orders SET status='PAID' WHERE id=$1 AND status='PENDING_PAYMENT'",[payment.rows[0].order_id]);
-      await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) SELECT p.order_id,'PLATFORM_CLEARING',NULL,'CREDIT',p.amount_cents,o.currency FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND NOT EXISTS (SELECT 1 FROM ledger_entries WHERE order_id=payments.order_id AND account_type='PLATFORM_CLEARING' AND direction='CREDIT')`,[input.paymentId]);
+      await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) SELECT p.order_id,'PLATFORM_CLEARING',NULL,'CREDIT',p.amount_cents,o.currency FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND NOT EXISTS (SELECT 1 FROM ledger_entries WHERE order_id=p.order_id AND account_type='PLATFORM_CLEARING' AND direction='CREDIT')`,[input.paymentId]);
     } else if (input.status === 'FAILED') {
       await client.query("UPDATE payments SET status='FAILED' WHERE id=$1 AND status <> 'SUCCEEDED'",[input.paymentId]);
     }
