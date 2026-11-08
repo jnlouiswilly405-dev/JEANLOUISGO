@@ -30,3 +30,5 @@ Properties: no new money movement; same single PLATFORM_CLEARING credit; no sche
 Early `payment_intent.succeeded` with NULL reference becomes SUCCEEDED once, with exactly one ledger entry; replay returns duplicate; mismatched amount, currency or paymentId is rejected with no state change; a reference already used by another payment is rejected; FAILED events unaffected; a later createPayment reply does not overwrite the adopted reference (guarded by `IS NULL`).
 
 Decision needed from the owner: approve the adoption change, or keep the current behaviour with the report endpoint and an operational runbook.
+
+> UPDATE (98189cc): the reference-adoption proposal is IMPLEMENTED for verified SUCCEEDED Stripe sandbox events (single-use, amount/currency reconciled, same transaction, tests in `backend/integration/stripe-webhook-adoption.int.ts`). The payment row lock now precedes the event insert to avoid concurrent-event deadlocks.
