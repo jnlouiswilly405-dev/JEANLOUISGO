@@ -168,16 +168,20 @@ describe('api-client contract: notifications, reviews, promos, chat, read-only f
     expect(red.rows[0].n).toBe(0);
   });
 
-  it('chat: participants read and send; outsiders get 403', async () => {
-    const a = await createUser(pool, 'CUSTOMER');
+  it('chat: the client opens the order thread, exchanges messages and outsiders are refused', async () => {
+    const owner = await createUser(pool, 'MERCHANT');
+    const merchantId = await createMerchant(pool, owner.id);
+    const customer = await createUser(pool, 'CUSTOMER');
     const outsider = await createUser(pool, 'CUSTOMER');
-    const t = await pool.query('INSERT INTO chat_threads DEFAULT VALUES RETURNING id');
-    const threadId = t.rows[0].id as string;
-    await pool.query(`INSERT INTO chat_participants (thread_id,user_id,role) VALUES ($1,$2,'CUSTOMER')`, [threadId, a.id]);
-    const c = clientFor(a.token);
-    expect((await c.chat.send(threadId, 'hello')).body).toBe('hello');
-    expect((await c.chat.list(threadId)).map((m) => m.body)).toEqual(['hello']);
-    await expect(clientFor(outsider.token).chat.list(threadId)).rejects.toMatchObject({ status: 403 });
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'ACCEPTED' });
+    const c = clientFor(customer.token);
+    const thread = await c.chat.openOrderThread(orderId);
+    expect(thread.order_id).toBe(orderId);
+    expect((await c.chat.send(thread.id, 'hello')).body).toBe('hello');
+    expect((await clientFor(owner.token).chat.list(thread.id)).map((m) => m.body)).toEqual(['hello']);
+    expect((await c.chat.threads()).map((t) => t.id)).toContain(thread.id);
+    await expect(clientFor(outsider.token).chat.list(thread.id)).rejects.toMatchObject({ status: 403 });
+    await expect(clientFor(outsider.token).chat.openOrderThread(orderId)).rejects.toMatchObject({ status: 404 });
   });
 
   it('finance views are owner-scoped, read-only and empty while settlement creation is disabled', async () => {

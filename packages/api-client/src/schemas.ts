@@ -111,3 +111,15 @@ export const settlementSchema = z.object({
   net_amount: amountText, net_amount_cents: amountText,
 }).passthrough();
 export type MerchantSettlement = z.infer<typeof settlementSchema>;
+
+export const chatThreadSchema = z.object({
+  id: z.string(), order_id: z.string().nullable(), created_at: z.string(), closed_at: z.string().nullable().optional(),
+}).passthrough();
+export type ChatThread = z.infer<typeof chatThreadSchema>;
+export const chatThreadsSchema = z.array(chatThreadSchema);
+
+export const chatMessageSchema = z.object({
+  id: z.string(), thread_id: z.string(), sender_id: z.string(), body: z.string(), created_at: z.string(),
+}).passthrough();
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export const chatMessagesSchema = z.array(chatMessageSchema);

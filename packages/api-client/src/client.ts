@@ -1,6 +1,6 @@
 import { z, type ZodType } from 'zod';
 import {
-  authResultSchema, blockedOutboxSchema, earningSchema, healthSchema, looseRowSchema, looseRowsSchema, meSchema,
+  authResultSchema, blockedOutboxSchema, chatMessageSchema, chatMessagesSchema, chatThreadSchema, chatThreadsSchema, earningSchema, healthSchema, looseRowSchema, looseRowsSchema, meSchema,
   merchantSchema, notificationSchema, notificationsSchema, orderSchema, paymentSchema, productSchema, promoPreviewSchema,
   settlementSchema, trackingEventSchema, unreferencedPaymentsSchema,
   type OrderStatus,
@@ -87,8 +87,11 @@ export function createApiClient(opts: ApiClientOptions) {
       markRead: (id: string) => request('POST', `/api/notifications/${enc(id)}/read`, notificationSchema),
     },
     chat: {
-      list: (threadId: string) => request('GET', `/api/chat/${enc(threadId)}/messages`, looseRowsSchema),
-      send: (threadId: string, body: string) => request('POST', `/api/chat/${enc(threadId)}/messages`, looseRowSchema, { body }),
+      // Threads exist per order; the backend creates one on first open and admits only the order's parties.
+      openOrderThread: (orderId: string) => request('POST', `/api/orders/${enc(orderId)}/chat`, chatThreadSchema),
+      threads: () => request('GET', '/api/chat/threads', chatThreadsSchema),
+      list: (threadId: string) => request('GET', `/api/chat/${enc(threadId)}/messages`, chatMessagesSchema),
+      send: (threadId: string, body: string) => request('POST', `/api/chat/${enc(threadId)}/messages`, chatMessageSchema, { body }),
     },
     reviews: {
       create: (input: { orderId: string; rating: number; body?: string; merchantId?: string }) => request('POST', '/api/reviews', looseRowSchema, input),
