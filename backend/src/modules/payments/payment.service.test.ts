@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { assertPaymentProviderAllowed, getProvider } from './provider.js';
 import { refundPayment, validateNoActivePayment, validatePaymentOrderState, validatePaymentWebhookDetails, validatePaymentWebhookEvent } from './payment.service.js';
@@ -41,7 +42,7 @@ describe('refund safety', () => {
 describe('provider-scoped webhook idempotency', () => {
   it('uses the provider and event ID together as the conflict target', async () => {
     const source = await import('node:fs/promises').then((fs) => fs.readFile(
-      new URL('./payment.service.ts', import.meta.url), 'utf8'
+      join(__dirname, 'payment.service.ts'), 'utf8'
     ));
     expect(source).toContain('ON CONFLICT(provider,event_id) DO NOTHING');
     expect(source).not.toContain('ON CONFLICT(event_id) DO NOTHING');

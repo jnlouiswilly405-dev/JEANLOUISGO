@@ -23,5 +23,5 @@ paymentRouter.post('/webhook/:provider', async (req,res) => {
 
 paymentRouter.post('/:paymentId/refund', requireAuth, requireRole('ADMIN'), async (req,res) => {
   const parsed=refundSchema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:parsed.error.issues});
-  try{return res.status(201).json(await refundPayment(req.params.paymentId,parsed.data.amountCents));}catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Refund failed'});}
+  try{return res.status(201).json(await refundPayment(req.params.paymentId as string,parsed.data.amountCents));}catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Refund failed'});}
 });

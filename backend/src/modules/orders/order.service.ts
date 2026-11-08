@@ -12,14 +12,16 @@ export function assertValidOrderTransition(current: OrderStatus, next: OrderStat
   }
 }
 
-export function validateOrderInput(input: { items: OrderItem[]; deliveryFeeCents?: number }): void {
+type OrderItemInput = Pick<OrderItem, 'productId' | 'quantity'> & Partial<OrderItem>;
+
+export function validateOrderInput(input: { items: OrderItemInput[]; deliveryFeeCents?: number }): void {
   if (!Array.isArray(input.items) || input.items.length === 0) throw new Error('Order must contain at least one item');
   if (input.items.some(item => !Number.isInteger(item.quantity) || item.quantity <= 0)) throw new Error('Item quantity must be a positive integer');
   if (input.items.some(item => !item.productId)) throw new Error('Each item must have a product ID');
   if (input.deliveryFeeCents !== undefined && (!Number.isSafeInteger(input.deliveryFeeCents) || input.deliveryFeeCents < 0)) throw new Error('Delivery fee must be a non-negative integer');
 }
 
-export async function createOrder(input:{customerId:string;merchantId:string;items:OrderItem[];deliveryFeeCents?:number}):Promise<Order> {
+export async function createOrder(input:{customerId:string;merchantId:string;items:OrderItemInput[];deliveryFeeCents?:number}):Promise<Order> {
   if (!pool) throw new Error('DATABASE_URL is not configured');
   validateOrderInput(input);
   const client = await pool.connect();

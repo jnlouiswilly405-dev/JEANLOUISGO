@@ -20,7 +20,7 @@ grep -q 'rows\[0\].assigned_driver_profile_id !== driverId' "$ROOT/backend/src/m
 grep -q 'rows\[0\].assigned_driver_profile_id === driverId' "$ROOT/backend/src/modules/dispatch/service.ts"
 grep -q "status='ASSIGNED' AND driver_profile_id=\$2" "$ROOT/backend/src/modules/dispatch/service.ts"
 grep -q 'listOrdersForActor(req.user!)' "$ROOT/backend/src/modules/orders/order.routes.ts"
-grep -q 'getOrderForActor(req.params.id,req.user!)' "$ROOT/backend/src/modules/orders/order.routes.ts"
+grep -q 'getOrderForActor(req.params.id as string,req.user!)' "$ROOT/backend/src/modules/orders/order.routes.ts"
 grep -q "ORDER_FORBIDDEN" "$ROOT/backend/src/modules/orders/order.service.ts"
 grep -q 'ORDER_NOT_ASSIGNED_TO_DRIVER' "$ROOT/backend/src/modules/delivery/service.ts"
 grep -q 'Driver profile access denied' "$ROOT/backend/src/modules/final-routes/routes.ts"

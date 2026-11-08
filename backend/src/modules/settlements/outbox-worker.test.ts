@@ -73,7 +73,7 @@ describe("settlement outbox worker", () => {
     });
 
     await expect(processNextOutboxEvent(mock.pool, handler, 3)).resolves.toBe("FAILED");
-    const retryUpdate = mock.poolQuery.mock.calls[0];
+    const retryUpdate = mock.poolQuery.mock.calls[0] as unknown as [string, unknown[]];
     expect(retryUpdate[0]).toContain("last_error=$4");
     expect(retryUpdate[1]).toContain("BLOCKED");
   });

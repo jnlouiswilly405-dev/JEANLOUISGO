@@ -32,7 +32,7 @@ export function verifyToken(token: string): AuthUser {
   if (!header || !payload || !signature) throw new Error('Invalid token');
   const expected = createHmac('sha256', env.JWT_SECRET).update(`${header}.${payload}`).digest('base64url');
   if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new Error('Invalid token');
-  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString()) as AuthUser & { sub: string; exp: number };
+  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString()) as AuthUser & { sub: string; exp: number; name?: string };
   if (!decoded.exp || decoded.exp < Math.floor(Date.now()/1000)) throw new Error('Token expired');
   return { id: decoded.sub, email: decoded.email, displayName: decoded.displayName ?? decoded.name, role: decoded.role };
 }
