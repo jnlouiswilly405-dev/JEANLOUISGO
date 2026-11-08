@@ -155,11 +155,22 @@ export async function handleWebhook(input: { provider: PaymentProvider; eventId:
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const inserted = await client.query(`INSERT INTO payment_events(event_id,provider,event_type,payment_id,payload) VALUES($1,$2,$3,$4,$5::jsonb) ON CONFLICT(provider,event_id) DO NOTHING RETURNING event_id`, [input.eventId,input.provider,input.type,input.paymentId,input.rawBody]);
-    if (!inserted.rowCount) { await client.query('COMMIT'); return { duplicate: true }; }
-    const payment = await client.query<{ order_id:string; amount_cents:number; status:string; currency:string; provider_reference:string; order_status:string }>('SELECT p.order_id,p.amount_cents,p.status,o.currency,p.provider_reference,o.status AS order_status FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND p.provider=$2 FOR UPDATE OF p,o',[input.paymentId,input.provider]);
+    // Lock the payment and order rows BEFORE inserting the event: the event row's foreign key takes a shared lock on
+    // the payment row, so inserting first made concurrent events for one payment deadlock on the later FOR UPDATE.
+    const payment = await client.query<{ order_id:string; amount_cents:number; status:string; currency:string; provider_reference:string|null; order_status:string }>('SELECT p.order_id,p.amount_cents,p.status,o.currency,p.provider_reference,o.status AS order_status FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND p.provider=$2 FOR UPDATE OF p,o',[input.paymentId,input.provider]);
     if (!payment.rowCount) throw new Error('Payment not found');
-    validatePaymentWebhookDetails(input, { amountCents: payment.rows[0].amount_cents, currency: payment.rows[0].currency, providerReference: payment.rows[0].provider_reference });
+    const inserted = await client.query(`INSERT INTO payment_events(event_id,provider,event_type,payment_id,payload) VALUES($1,$2,$3,$4,$5::jsonb) ON CONFLICT(provider,event_id) DO NOTHING RETURNING event_id`, [input.eventId,input.provider,input.type,input.paymentId,input.rawBody]);
+    if (!inserted.rowCount) { await client.query('COMMIT'); return { duplicate: true }; }    // Early-arrival recovery: a verified SUCCEEDED Stripe event may supply the reference only for a PENDING stripe
+    // payment that has none yet. Amount and currency are still compared below, and UNIQUE(provider_reference) plus the
+    // IS NULL guard keep it single-use. Any failure rolls back the event insert too, so Stripe's retry is processed normally.
+    const adoptReference = input.provider === 'stripe' && input.status === 'SUCCEEDED'
+      && payment.rows[0].status === 'PENDING' && payment.rows[0].provider_reference === null
+      && /^pi_[A-Za-z0-9_]+$/.test(input.providerReference);
+    validatePaymentWebhookDetails(input, { amountCents: payment.rows[0].amount_cents, currency: payment.rows[0].currency, providerReference: adoptReference ? input.providerReference : payment.rows[0].provider_reference as string });
+    if (adoptReference) {
+      const adopted = await client.query("UPDATE payments SET provider_reference=$2 WHERE id=$1 AND status='PENDING' AND provider_reference IS NULL", [input.paymentId, input.providerReference]);
+      if (adopted.rowCount !== 1) throw new Error('WEBHOOK_PROVIDER_REFERENCE_ADOPTION_FAILED');
+    }
     if (input.status === 'SUCCEEDED') validatePaymentOrderState(payment.rows[0].order_status);
     if (input.status === 'SUCCEEDED' && payment.rows[0].status !== 'SUCCEEDED') {
       await client.query("UPDATE payments SET status='SUCCEEDED' WHERE id=$1",[input.paymentId]);
