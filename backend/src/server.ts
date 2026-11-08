@@ -9,6 +9,7 @@ import { paymentRouter } from './modules/payments/payment.routes.js';
 import { finalRouter } from './modules/final-routes/routes.js';
 import { pool } from './db/pool.js';
 import { env } from './config/env.js';
+import { blockedSettlementHandler, isOutboxWorkerEnabled, startOutboxRunner, type OutboxRunner } from './modules/settlements/outbox-runner.js';
 
 const app = express();
 const allowedOrigins = (env.CORS_ORIGINS ?? '')
@@ -59,6 +60,41 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 });
 
 const port = Number(process.env.PORT ?? 4000);
-if (process.env.NODE_ENV !== 'test') app.listen(port, () => console.log(`MULTIGO API listening on :${port}`));
+if (process.env.NODE_ENV !== 'test') {
+  const server = app.listen(port, () => console.log(`MULTIGO API listening on :${port}`));
+
+  // Opt-in only. The handler is fail-closed: settlement events end BLOCKED and no money moves.
+  let outboxRunner: OutboxRunner | undefined;
+  if (isOutboxWorkerEnabled(env.OUTBOX_WORKER_ENABLED)) {
+    if (pool) {
+      outboxRunner = startOutboxRunner({ pool, handler: blockedSettlementHandler, log: (m) => console.log(m) });
+      console.log('Outbox worker enabled (settlement handler is fail-closed)');
+    } else {
+      console.warn('OUTBOX_WORKER_ENABLED=true ignored: DATABASE_URL is not configured');
+    }
+  }
+
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received, shutting down`);
+    const force = setTimeout(() => process.exit(1), 10000);
+    force.unref();
+    void (async () => {
+      try {
+        await outboxRunner?.stop();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await pool?.end();
+        process.exit(0);
+      } catch (error) {
+        console.error('Shutdown error', error);
+        process.exit(1);
+      }
+    })();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
 
 export { app, z };

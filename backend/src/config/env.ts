@@ -9,6 +9,8 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
   // Comma-separated exact browser origins, e.g. https://app.example.com
   CORS_ORIGINS: z.string().optional(),
+  // Off unless exactly "true". Runs the fail-closed outbox worker; it never creates financial records.
+  OUTBOX_WORKER_ENABLED: z.string().optional(),
 });
 
 const parsedEnv = envSchema.parse(process.env);
