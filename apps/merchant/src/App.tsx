@@ -1,23 +1,31 @@
 import { useState } from 'react';
-import { AuthGate, useSession } from '@multigo/app-shell';
+import { AuthGate, NotificationsPanel, useSession } from '@multigo/app-shell';
 import { Orders } from './pages/Orders.js';
 import { Menu } from './pages/Menu.js';
+import { Settlements } from './pages/Settlements.js';
+
+const TABS = { orders: 'Orders', menu: 'Menu', settlements: 'Settlements', notifications: 'Notifications' } as const;
+type Tab = keyof typeof TABS;
 
 function Shell() {
   const { user, logout } = useSession();
-  const [tab, setTab] = useState<'orders' | 'menu'>('orders');
+  const [tab, setTab] = useState<Tab>('orders');
   return (
     <>
       <header>
         <strong>MULTIGO Merchant</strong>
         <nav aria-label="Main">
-          <button onClick={() => setTab('orders')}>Orders</button>
-          <button onClick={() => setTab('menu')}>Menu</button>
+          {(Object.keys(TABS) as Tab[]).map((t) => <button key={t} onClick={() => setTab(t)}>{TABS[t]}</button>)}
         </nav>
         <span className="muted">{user?.displayName}</span>
         <button onClick={logout}>Sign out</button>
       </header>
-      <main>{tab === 'orders' ? <Orders /> : <Menu />}</main>
+      <main>
+        {tab === 'orders' && <Orders />}
+        {tab === 'menu' && <Menu />}
+        {tab === 'settlements' && <Settlements />}
+        {tab === 'notifications' && <NotificationsPanel />}
+      </main>
     </>
   );
 }

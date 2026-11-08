@@ -93,6 +93,35 @@ describe('merchant app', () => {
     expect(api.calls.some((c) => c.path === '/api/catalog' && c.method === 'POST')).toBe(false);
   });
 
+  it('settlements: read-only view for the merchant\'s own restaurant only, with GET requests', async () => {
+    const row = { id: 's1', merchant_id: 'm1', order_id: 'abcdef12-0000', status: 'ELIGIBLE', created_at: '2026-01-01T00:00:00Z', net_amount: '9.00', net_amount_cents: '875' };
+    const api = fakeApi({ handlers: { 'GET /api/merchants/m1/settlements': () => json(200, [row]) } });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(screen.getByRole('button', { name: 'Settlements' }));
+    expect(await screen.findByText(/\$8\.75/)).toBeInTheDocument();
+    expect(screen.getByText(/Payouts are not enabled/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /pay|approve|payout/i })).not.toBeInTheDocument();
+    expect(api.calls.some((c) => c.path === '/api/merchants/m2/settlements')).toBe(false);
+    expect(api.calls.filter((c) => c.path.includes('settlements')).every((c) => c.method === 'GET')).toBe(true);
+  });
+
+  it('settlements: empty state and backend errors are shown', async () => {
+    const api = fakeApi({ handlers: { 'GET /api/merchants/m1/settlements': () => json(403, { error: 'Merchant access denied' }) } });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(screen.getByRole('button', { name: 'Settlements' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Merchant access denied');
+  });
+
+  it('notifications tab lists the merchant\'s notifications', async () => {
+    const api = fakeApi({ handlers: { 'GET /api/notifications': () => json(200, [{ id: 'n1', event_type: 'X', title: 'New order', body: 'b', order_id: null, read_at: null, created_at: '2026-01-01T00:00:00Z' }]) } });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    expect(await screen.findByText('New order')).toBeInTheDocument();
+  });
+
   it('offers to create a restaurant when the merchant has none', async () => {
     const api = fakeApi({ merchants: [otherMerchant], handlers: { 'POST /api/merchants': (b) => json(201, { ...merchant, name: b.name }) } });
     mount(api.impl);
