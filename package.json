@@ -6,7 +6,8 @@
     "backend",
     "packages/*",
     "apps/customer",
-    "apps/merchant"
+    "apps/merchant",
+    "apps/driver"
   ],
   "scripts": {
     "dev": "npm run dev --workspace backend",

@@ -1,0 +1,113 @@
+import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { SessionProvider } from '@multigo/app-shell';
+import { App } from './App.js';
+import { useLocationSharing, type GeoLike } from './useLocationSharing.js';
+
+const user = { id: 'd-user', email: 'd@x.co', displayName: 'Dan', role: 'DRIVER' };
+const mkOrder = (id: string, status: string) => ({ id, customerId: 'c', merchantId: 'm', driverId: 'profile-1', items: [], subtotalCents: 1000, deliveryFeeCents: 200, totalCents: 1200, currency: 'USD', status, createdAt: '2026-01-01T00:00:00Z' });
+const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+
+function fakeApi(orders: unknown[], handlers: Record<string, () => Response> = {}) {
+  const calls: { method: string; path: string; body?: any }[] = [];
+  const impl = vi.fn(async (url: string, init: RequestInit = {}) => {
+    const path = new URL(url).pathname;
+    const method = init.method ?? 'GET';
+    calls.push({ method, path, body: init.body ? JSON.parse(init.body as string) : undefined });
+    const key = `${method} ${path}`;
+    if (handlers[key]) return handlers[key]();
+    if (key === 'POST /api/auth/login') return json(200, { user, token: 'tok' });
+    if (key === 'GET /api/orders') return json(200, orders);
+    if (method === 'POST') return json(200, mkOrder('x', 'IN_TRANSIT'));
+    return json(404, { error: `no route ${key}` });
+  });
+  return { impl: impl as unknown as typeof fetch, calls };
+}
+
+function fakeGeo() {
+  let cb: ((p: { coords: { latitude: number; longitude: number; accuracy: number } }) => void) | null = null;
+  const geo: GeoLike = { watchPosition: vi.fn((ok) => { cb = ok; return 7; }), clearWatch: vi.fn() };
+  return { geo, emit: (lat: number, lng: number) => act(() => cb?.({ coords: { latitude: lat, longitude: lng, accuracy: 5 } })) };
+}
+
+function mount(fetchImpl: typeof fetch, geo?: GeoLike | null) {
+  const store = new Map<string, string>();
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+  render(<SessionProvider apiBaseUrl="http://api.test" allowedRoles={['DRIVER']} storage={storage} fetchImpl={fetchImpl}><App geolocation={geo} /></SessionProvider>);
+}
+
+async function signIn() {
+  await userEvent.type(screen.getByLabelText('Email'), 'd@x.co');
+  await userEvent.type(screen.getByLabelText('Password'), 'password123');
+  await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+}
+
+describe('driver app', () => {
+  it('separates current deliveries from history and offers the right action', async () => {
+    mount(fakeApi([mkOrder('aaaaaaaa-1', 'ASSIGNED'), mkOrder('bbbbbbbb-2', 'IN_TRANSIT'), mkOrder('cccccccc-3', 'DELIVERED')]).impl);
+    await signIn();
+    const current = await screen.findByRole('list', { name: 'Current deliveries' });
+    expect(within(current).getByRole('button', { name: 'Confirm pickup' })).toBeInTheDocument();
+    expect(within(current).getByRole('button', { name: 'Mark delivered' })).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'History' })).getByText('DELIVERED')).toBeInTheDocument();
+  });
+
+  it('confirms pickup through the status endpoint and delivery steps through the delivery endpoint', async () => {
+    const api = fakeApi([mkOrder('aaaaaaaa-1', 'ASSIGNED'), mkOrder('bbbbbbbb-2', 'PICKED_UP'), mkOrder('cccccccc-3', 'IN_TRANSIT')]);
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirm pickup' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Start delivery' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Mark delivered' }));
+    await waitFor(() => expect(api.calls.filter((c) => c.method === 'POST' && c.path !== '/api/auth/login')).toHaveLength(3));
+    const posts = api.calls.filter((c) => c.method === 'POST' && c.path !== '/api/auth/login');
+    expect(posts[0]).toMatchObject({ path: '/api/orders/aaaaaaaa-1/status', body: { status: 'PICKED_UP' } });
+    expect(posts[1]).toMatchObject({ path: '/api/orders/bbbbbbbb-2/delivery', body: { action: 'PICKED_UP' } });
+    expect(posts[2]).toMatchObject({ path: '/api/orders/cccccccc-3/delivery', body: { action: 'DELIVERED' } });
+  });
+
+  it('shows the backend error when a transition is refused', async () => {
+    const api = fakeApi([mkOrder('aaaaaaaa-1', 'IN_TRANSIT')], { 'POST /api/orders/aaaaaaaa-1/delivery': () => json(409, { error: 'INVALID_DELIVERY_TRANSITION' }) });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark delivered' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('INVALID_DELIVERY_TRANSITION');
+  });
+
+  it('shares location for the order using the driver profile id, only while sharing is on', async () => {
+    const api = fakeApi([mkOrder('aaaaaaaa-1', 'IN_TRANSIT')]);
+    const g = fakeGeo();
+    mount(api.impl, g.geo);
+    await signIn();
+    await screen.findByRole('button', { name: 'Mark delivered' });
+    expect(g.geo.watchPosition).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByLabelText('Share location'));
+    await waitFor(() => expect(g.geo.watchPosition).toHaveBeenCalled());
+    g.emit(40.5, -74.25);
+    await waitFor(() => expect(api.calls.find((c) => c.path === '/api/drivers/profile-1/location')?.body).toEqual({ lat: 40.5, lng: -74.25, accuracyM: 5, orderId: 'aaaaaaaa-1' }));
+    await userEvent.click(screen.getByLabelText('Share location'));
+    expect(g.geo.clearWatch).toHaveBeenCalledWith(7);
+  });
+
+  it('offers no location sharing for completed orders', async () => {
+    mount(fakeApi([mkOrder('cccccccc-3', 'DELIVERED')]).impl, fakeGeo().geo);
+    await signIn();
+    await screen.findByRole('list', { name: 'History' });
+    expect(screen.queryByLabelText('Share location')).not.toBeInTheDocument();
+  });
+});
+
+describe('useLocationSharing', () => {
+  it('throttles uploads and reports geolocation being unavailable', async () => {
+    const g = fakeGeo();
+    const send = vi.fn().mockResolvedValue({});
+    renderHook(() => useLocationSharing({ enabled: true, intervalMs: 60_000, send, geolocation: g.geo }));
+    g.emit(1, 2); g.emit(3, 4);
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send).toHaveBeenCalledWith({ lat: 1, lng: 2, accuracyM: 5 });
+
+    const { result } = renderHook(() => useLocationSharing({ enabled: true, send, geolocation: null }));
+    await waitFor(() => expect(result.current.error).toBe('Location is not available on this device'));
+  });
+});

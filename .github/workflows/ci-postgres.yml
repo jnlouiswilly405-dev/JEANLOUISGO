@@ -73,6 +73,11 @@ jobs:
           npm run lint --workspace @multigo/merchant-app
           npm test --workspace @multigo/merchant-app
           npm run build --workspace @multigo/merchant-app
+      - name: Driver app lint, tests and build
+        run: |
+          npm run lint --workspace @multigo/driver-app
+          npm test --workspace @multigo/driver-app
+          npm run build --workspace @multigo/driver-app
       - name: Backend PostgreSQL integration tests
         env:
           DATABASE_URL: postgres://multigo:multigo_test@localhost:5432/multigo_test

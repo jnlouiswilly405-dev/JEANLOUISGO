@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 import { ApiError, createApiClient, merchantNextStatus, type ApiClient } from '../../packages/api-client/src/index.js';
-import { createDriverProfile, createMerchant, createProduct, createUser, getPool, startApi } from './helpers.js';
+import { createDriverProfile, createMerchant, createProduct, createUser, getPool, insertOrder, orderStatus, startApi } from './helpers.js';
 
 // Contract tests: the shared frontend client (real fetch, real zod schemas) against the real backend on PostgreSQL.
 let pool: Pool;
@@ -76,6 +76,32 @@ describe('api-client contract', () => {
     const created = await clientFor((await createUser(pool, 'MERCHANT')).token).merchants.create(`Contract Kitchen ${randomUUID().slice(0, 8)}`);
     expect(created.active).toBe(true);
     await expect(clientFor(customer.token).orders.setStatus(order.id, 'PREPARING')).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('driver: sees assigned orders and completes pickup -> in transit -> delivered with location updates', async () => {
+    const owner = await createUser(pool, 'MERCHANT');
+    const merchantId = await createMerchant(pool, owner.id);
+    const customer = await createUser(pool, 'CUSTOMER');
+    const driver = await createUser(pool, 'DRIVER');
+    const profileId = await createDriverProfile(pool, driver.id);
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'ASSIGNED', driverProfileId: profileId });
+
+    const d = clientFor(driver.token);
+    const [mine] = await d.orders.list();
+    expect(mine.id).toBe(orderId);
+    expect(mine.driverId).toBe(profileId); // the profile id the app needs for location updates
+
+    await d.drivers.sendLocation(profileId, { lat: 40.7, lng: -74, orderId, accuracyM: 5 });
+    expect((await d.orders.setStatus(orderId, 'PICKED_UP')).status).toBe('PICKED_UP');
+    await d.orders.advanceDelivery(orderId, 'PICKED_UP');
+    expect(await orderStatus(pool, orderId)).toBe('IN_TRANSIT');
+    await expect(d.orders.advanceDelivery(orderId, 'PICKED_UP')).rejects.toMatchObject({ status: 409 });
+    await d.orders.advanceDelivery(orderId, 'DELIVERED');
+    expect(await orderStatus(pool, orderId)).toBe('DELIVERED');
+    expect((await clientFor(customer.token).orders.tracking(orderId)).length).toBe(1);
+
+    const otherDriver = clientFor((await createUser(pool, 'DRIVER')).token);
+    await expect(otherDriver.orders.advanceDelivery(orderId, 'DELIVERED')).rejects.toBeInstanceOf(ApiError);
   });
 
   it('admin: health, summary, blocked outbox and unreferenced payments parse; non-admins get 403', async () => {
