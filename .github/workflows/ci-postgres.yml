@@ -73,6 +73,11 @@ jobs:
           npm run lint --workspace @multigo/merchant-app
           npm test --workspace @multigo/merchant-app
           npm run build --workspace @multigo/merchant-app
+      - name: Admin app lint, tests and build
+        run: |
+          npm run lint --workspace @multigo/admin-app
+          npm test --workspace @multigo/admin-app
+          npm run build --workspace @multigo/admin-app
       - name: Driver app lint, tests and build
         run: |
           npm run lint --workspace @multigo/driver-app
