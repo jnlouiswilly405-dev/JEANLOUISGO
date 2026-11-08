@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ErrorBanner, useAsync, useSession } from '@multigo/app-shell';
 import { formatMoney, type Merchant } from '@multigo/api-client';
 import { addToCart, cartSubtotalCents, cartToOrderItems, setQuantity, type Cart } from '../cart.js';
+import { PromoPreview } from './PromoPreview.js';
 
 export function Menu({ merchant, onOrdered }: { merchant: Merchant; onOrdered: (orderId: string) => void }) {
   const { client } = useSession();
@@ -53,6 +54,7 @@ export function Menu({ merchant, onOrdered }: { merchant: Merchant; onOrdered: (
         ))}
       </ul>
       {lines.length > 0 && <p>Items subtotal: <strong>{formatMoney(cartSubtotalCents(cart))}</strong> <small className="muted">(delivery fee and final total are set by the server)</small></p>}
+      {lines.length > 0 && <PromoPreview subtotalCents={cartSubtotalCents(cart)} />}
       <ErrorBanner message={orderError} />
       <button disabled={lines.length === 0 || placing} onClick={placeOrder}>{placing ? 'Placing…' : 'Place order'}</button>
     </section>

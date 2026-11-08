@@ -87,6 +87,21 @@ describe('customer app', () => {
     expect(await screen.findByRole('region', { name: 'Order details' })).toHaveTextContent('2 × Margherita');
   });
 
+  it('offers the review form only for delivered orders and opens notifications', async () => {
+    const api = fakeApi({
+      'GET /api/orders/o-1': () => json(200, { ...order, status: 'DELIVERED' }),
+      'GET /api/notifications': () => json(200, [{ id: 'n1', event_type: 'X', title: 'Driver on the way', body: 'b', order_id: null, read_at: null, created_at: '2026-01-01T00:00:00Z' }]),
+    });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'My orders' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Details' }));
+    expect(await screen.findByRole('form', { name: 'Rate this order' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Payment' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    expect(await screen.findByText('Driver on the way')).toBeInTheDocument();
+  });
+
   it('returns to the sign-in form after the session expires (401)', async () => {
     const api = fakeApi({ 'GET /api/merchants': () => json(401, { error: 'Invalid or expired token' }) });
     mount(api.impl);
