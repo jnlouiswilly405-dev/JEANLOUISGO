@@ -1,7 +1,8 @@
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 import {
-  authResultSchema, blockedOutboxSchema, healthSchema, looseRowSchema, looseRowsSchema, meSchema,
-  merchantSchema, orderSchema, paymentSchema, productSchema, trackingEventSchema, unreferencedPaymentsSchema,
+  authResultSchema, blockedOutboxSchema, earningSchema, healthSchema, looseRowSchema, looseRowsSchema, meSchema,
+  merchantSchema, notificationSchema, notificationsSchema, orderSchema, paymentSchema, productSchema, promoPreviewSchema,
+  settlementSchema, trackingEventSchema, unreferencedPaymentsSchema,
   type OrderStatus,
 } from './schemas.js';
 
@@ -82,15 +83,24 @@ export function createApiClient(opts: ApiClientOptions) {
       sendLocation: (driverId: string, input: { lat: number; lng: number; orderId?: string; accuracyM?: number }) => request('POST', `/api/drivers/${enc(driverId)}/location`, looseRowSchema, input),
     },
     notifications: {
-      list: () => request('GET', '/api/notifications', looseRowsSchema),
-      markRead: (id: string) => request('POST', `/api/notifications/${enc(id)}/read`, looseRowSchema),
+      list: () => request('GET', '/api/notifications', notificationsSchema),
+      markRead: (id: string) => request('POST', `/api/notifications/${enc(id)}/read`, notificationSchema),
     },
     chat: {
       list: (threadId: string) => request('GET', `/api/chat/${enc(threadId)}/messages`, looseRowsSchema),
       send: (threadId: string, body: string) => request('POST', `/api/chat/${enc(threadId)}/messages`, looseRowSchema, { body }),
     },
     reviews: {
-      create: (input: { orderId: string; rating: number; body?: string }) => request('POST', '/api/reviews', looseRowSchema, input),
+      create: (input: { orderId: string; rating: number; body?: string; merchantId?: string }) => request('POST', '/api/reviews', looseRowSchema, input),
+    },
+    promos: {
+      // Preview only: the order API takes no promo code, so nothing here is applied to an order.
+      validate: (code: string, orderTotal: number) => request('POST', '/api/promos/validate', promoPreviewSchema, { code, orderTotal }),
+    },
+    // Read-only views of rows the backend already exposes. Nothing here can create, change or pay them.
+    finance: {
+      driverEarnings: (driverProfileId: string) => request('GET', `/api/drivers/${enc(driverProfileId)}/earnings`, z.array(earningSchema)),
+      merchantSettlements: (merchantId: string) => request('GET', `/api/merchants/${enc(merchantId)}/settlements`, z.array(settlementSchema)),
     },
     admin: {
       health: () => request('GET', '/api/admin/health', healthSchema),

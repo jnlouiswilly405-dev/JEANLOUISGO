@@ -86,3 +86,28 @@ export type UnreferencedPaymentsPage = z.infer<typeof unreferencedPaymentsSchema
 
 export const healthSchema = z.object({ database: z.string(), latencyMs: z.number(), checkedAt: z.string() });
 export type SystemHealth = z.infer<typeof healthSchema>;
+
+// pg returns NUMERIC/BIGINT as strings; `data` is free-form JSON written by the backend.
+export const notificationSchema = z.object({
+  id: z.string(), event_type: z.string(), title: z.string(), body: z.string(),
+  order_id: z.string().nullable().optional(), read_at: z.string().nullable(), created_at: z.string(),
+}).passthrough();
+export type AppNotification = z.infer<typeof notificationSchema>;
+export const notificationsSchema = z.array(notificationSchema);
+
+// Promo amounts are NUMERIC(12,2) in major currency units (not cents like the rest of the API).
+export const promoPreviewSchema = z.object({ promoId: z.string(), code: z.string(), discount: z.number() });
+export type PromoPreview = z.infer<typeof promoPreviewSchema>;
+
+// Read-only payout-side rows. Both the legacy NUMERIC columns and the *_cents BIGINT columns (migration 014) may be present.
+const amountText = z.string().nullable().optional();
+export const earningSchema = z.object({
+  id: z.string(), order_id: z.string(), status: z.string(), created_at: z.string(),
+  net_amount: amountText, net_amount_cents: amountText,
+}).passthrough();
+export type DriverEarning = z.infer<typeof earningSchema>;
+export const settlementSchema = z.object({
+  id: z.string(), order_id: z.string(), status: z.string(), created_at: z.string(),
+  net_amount: amountText, net_amount_cents: amountText,
+}).passthrough();
+export type MerchantSettlement = z.infer<typeof settlementSchema>;

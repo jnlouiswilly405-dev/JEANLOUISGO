@@ -121,3 +121,82 @@ describe('api-client contract', () => {
     await expect(clientFor(null).admin.health()).rejects.toMatchObject({ status: 401 });
   });
 });
+
+describe('api-client contract: notifications, reviews, promos, chat, read-only finance', () => {
+  it('notifications: lists own rows, marks read, cannot mark someone else\'s', async () => {
+    const me = await createUser(pool, 'CUSTOMER');
+    const other = await createUser(pool, 'CUSTOMER');
+    const ins = await pool.query(
+      `INSERT INTO notification_events (user_id,event_type,title,body,data) VALUES ($1,'ORDER_UPDATE','Order update','Your order moved',$2) RETURNING id`,
+      [me.id, JSON.stringify({ k: 'v' })],
+    );
+    const id = ins.rows[0].id as string;
+    const list = await clientFor(me.token).notifications.list();
+    expect(list.map((n) => n.id)).toContain(id);
+    expect(list.find((n) => n.id === id)?.read_at).toBeNull();
+    expect((await clientFor(me.token).notifications.markRead(id)).read_at).not.toBeNull();
+    expect((await clientFor(other.token).notifications.list()).some((n) => n.id === id)).toBe(false);
+    await expect(clientFor(other.token).notifications.markRead(id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('reviews: customer reviews a delivered order once; the duplicate is a 409', async () => {
+    const owner = await createUser(pool, 'MERCHANT');
+    const merchantId = await createMerchant(pool, owner.id);
+    const customer = await createUser(pool, 'CUSTOMER');
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'DELIVERED' });
+    const c = clientFor(customer.token);
+    const row = await c.reviews.create({ orderId, rating: 5, body: 'Great', merchantId });
+    expect(row).toMatchObject({ rating: 5, merchant_id: merchantId });
+    await expect(c.reviews.create({ orderId, rating: 4, merchantId })).rejects.toMatchObject({ status: 409 });
+    await expect(c.reviews.create({ orderId, rating: 9 })).rejects.toMatchObject({ status: 400 });
+    await expect(clientFor((await createUser(pool, 'DRIVER')).token).reviews.create({ orderId, rating: 3 })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('promos: validate previews a discount in major units and never redeems', async () => {
+    const code = `FE${randomUUID().slice(0, 8).toUpperCase()}`;
+    const promo = await pool.query(
+      `INSERT INTO promo_codes (code,discount_type,discount_value,min_order_total) VALUES ($1,'PERCENT',10,5) RETURNING id`, [code],
+    );
+    const c = clientFor((await createUser(pool, 'CUSTOMER')).token);
+    const preview = await c.promos.validate(code.toLowerCase(), 20);
+    expect(preview).toMatchObject({ code, discount: 2 });
+    await expect(c.promos.validate(code, 1)).rejects.toMatchObject({ status: 409 });
+    await expect(c.promos.validate('NOPE', 20)).rejects.toMatchObject({ status: 409 });
+    const used = await pool.query('SELECT used_count FROM promo_codes WHERE id=$1', [promo.rows[0].id]);
+    expect(used.rows[0].used_count).toBe(0);
+    const red = await pool.query('SELECT count(*)::int AS n FROM promo_redemptions WHERE promo_id=$1', [promo.rows[0].id]);
+    expect(red.rows[0].n).toBe(0);
+  });
+
+  it('chat: participants read and send; outsiders get 403', async () => {
+    const a = await createUser(pool, 'CUSTOMER');
+    const outsider = await createUser(pool, 'CUSTOMER');
+    const t = await pool.query('INSERT INTO chat_threads DEFAULT VALUES RETURNING id');
+    const threadId = t.rows[0].id as string;
+    await pool.query(`INSERT INTO chat_participants (thread_id,user_id,role) VALUES ($1,$2,'CUSTOMER')`, [threadId, a.id]);
+    const c = clientFor(a.token);
+    expect((await c.chat.send(threadId, 'hello')).body).toBe('hello');
+    expect((await c.chat.list(threadId)).map((m) => m.body)).toEqual(['hello']);
+    await expect(clientFor(outsider.token).chat.list(threadId)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('finance views are owner-scoped, read-only and empty while settlement creation is disabled', async () => {
+    const owner = await createUser(pool, 'MERCHANT');
+    const merchantId = await createMerchant(pool, owner.id);
+    const stranger = await createUser(pool, 'MERCHANT');
+    expect(await clientFor(owner.token).finance.merchantSettlements(merchantId)).toEqual([]);
+    await expect(clientFor(stranger.token).finance.merchantSettlements(merchantId)).rejects.toMatchObject({ status: 403 });
+
+    const driver = await createUser(pool, 'DRIVER');
+    const driverProfileId = await createDriverProfile(pool, driver.id);
+    const otherDriver = await createUser(pool, 'DRIVER');
+    expect(await clientFor(driver.token).finance.driverEarnings(driverProfileId)).toEqual([]);
+    await expect(clientFor(otherDriver.token).finance.driverEarnings(driverProfileId)).rejects.toMatchObject({ status: 403 });
+    await expect(clientFor((await createUser(pool, 'CUSTOMER')).token).finance.driverEarnings(driverProfileId)).rejects.toMatchObject({ status: 403 });
+
+    const before = await pool.query('SELECT (SELECT count(*) FROM driver_earnings) AS e, (SELECT count(*) FROM merchant_settlements) AS s');
+    await clientFor(owner.token).finance.merchantSettlements(merchantId);
+    const after = await pool.query('SELECT (SELECT count(*) FROM driver_earnings) AS e, (SELECT count(*) FROM merchant_settlements) AS s');
+    expect(after.rows[0]).toEqual(before.rows[0]);
+  });
+});
