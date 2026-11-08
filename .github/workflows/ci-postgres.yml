@@ -57,3 +57,7 @@ jobs:
         run: npm run build --workspace backend
       - name: Backend tests
         run: npm test --workspace backend
+      - name: Backend PostgreSQL integration tests
+        env:
+          DATABASE_URL: postgres://multigo:multigo_test@localhost:5432/multigo_test
+        run: npm run test:int --workspace backend

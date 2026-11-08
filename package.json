@@ -9,6 +9,7 @@
     "dev": "npm run dev --workspace backend",
     "build": "npm run build --workspace backend",
     "test": "npm test --workspace backend",
+    "test:int": "npm run test:int --workspace backend",
     "lint": "npm run lint --workspace backend"
   },
   "engines": {
