@@ -1,0 +1,33 @@
+name: Staging checklist integrity
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checklist:
+    name: Validate staging checklist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify required staging gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s STAGING_CHECKLIST.md
+          for required in \
+            "HTTPS on a real phone" \
+            "MonCash sandbox" \
+            "restore from backup" \
+            "rollback owner"; do
+            grep -Fq "$required" STAGING_CHECKLIST.md
+          done
+          echo "Checklist integrity passed. This job does not run application or PostgreSQL tests."
