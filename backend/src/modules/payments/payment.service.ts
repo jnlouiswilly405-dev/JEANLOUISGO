@@ -3,13 +3,17 @@ import { pool } from '../../db/pool.js';
 import type { PaymentProvider } from './payment.types.js';
 import { getProvider } from './provider.js';
 
-export async function createPayment(input: { orderId: string; provider: PaymentProvider; amountCents: number; idempotencyKey: string }) {
+export async function createPayment(input: { orderId: string; provider: PaymentProvider; amountCents: number; idempotencyKey: string }, actor: { id: string; role: string }) {
   if (!pool) throw new Error('DATABASE_URL is not configured');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     // Serialize requests sharing an idempotency key, including the first insert.
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [input.idempotencyKey]);
+    // Ownership is checked before the idempotency replay so a key cannot be used to read another customer's payment.
+    const owner = await client.query<{ customer_id: string }>('SELECT customer_id FROM orders WHERE id=$1', [input.orderId]);
+    if (!owner.rowCount) throw new Error('Order not found');
+    assertPaymentOrderOwner(owner.rows[0].customer_id, actor);
     const existing = await client.query<{id:string;order_id:string;provider:string;amount_cents:number;status:string}>('SELECT id,order_id,provider,amount_cents,status FROM payments WHERE idempotency_key=$1 FOR UPDATE', [input.idempotencyKey]);
     if (existing.rowCount) {
       const prior = existing.rows[0];
@@ -46,6 +50,10 @@ export async function createPayment(input: { orderId: string; provider: PaymentP
     return payment.rows[0];
   } catch (e) { await client.query('ROLLBACK'); throw e; }
   finally { client.release(); }
+}
+
+export function assertPaymentOrderOwner(orderCustomerId: string, actor: { id: string; role: string }): void {
+  if (actor.role !== 'ADMIN' && orderCustomerId !== actor.id) throw new Error('ORDER_FORBIDDEN');
 }
 
 export function validateNoActivePayment(existingStatus: string | null): void {

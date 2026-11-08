@@ -83,6 +83,39 @@ describe('payments (mock provider, test environment only)', () => {
   });
 });
 
+describe('payment ownership', () => {
+  it('forbids a customer from paying another customer\'s order and writes nothing', async () => {
+    const pool = await getPool();
+    const stranger = await createUser(pool, 'CUSTOMER');
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, totalCents: 1100 });
+    const res = await pay(stranger.token, orderId, 1100, key());
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('ORDER_FORBIDDEN');
+    expect(await orderStatus(pool, orderId)).toBe('PENDING_PAYMENT');
+    expect(await count('SELECT count(*)::int n FROM payments WHERE order_id=$1', [orderId])).toBe(0);
+    expect(await count('SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1', [orderId])).toBe(0);
+  });
+
+  it('does not let another customer replay the owner\'s idempotency key to read the payment', async () => {
+    const pool = await getPool();
+    const stranger = await createUser(pool, 'CUSTOMER');
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, totalCents: 1200 });
+    const k = key();
+    expect((await pay(customer.token, orderId, 1200, k)).status).toBe(201);
+    const res = await pay(stranger.token, orderId, 1200, k);
+    expect(res.status).toBe(403);
+    expect(res.body.id).toBeUndefined();
+  });
+
+  it('still lets the owner and admins pay', async () => {
+    const pool = await getPool();
+    const admin = await createUser(pool, 'ADMIN');
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, totalCents: 1300 });
+    expect((await pay(admin.token, orderId, 1300, key())).status).toBe(201);
+    expect(await orderStatus(pool, orderId)).toBe('PAID');
+  });
+});
+
 describe('live payment safety', () => {
   it('keeps the stripe provider disabled and writes nothing', async () => {
     const pool = await getPool();

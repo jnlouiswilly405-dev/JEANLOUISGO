@@ -10,7 +10,7 @@ const refundSchema = z.object({ amountCents:z.number().int().positive() });
 
 paymentRouter.post('/', requireAuth, requireRole('CUSTOMER','ADMIN'), async (req,res) => {
   const parsed=schema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:parsed.error.issues});
-  try{return res.status(201).json(await createPayment(parsed.data));}catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Payment failed'});}
+  try{return res.status(201).json(await createPayment(parsed.data, req.user!));}catch(e){const forbidden=e instanceof Error && e.message==='ORDER_FORBIDDEN';return res.status(forbidden?403:409).json({error:e instanceof Error?e.message:'Payment failed'});}
 });
 
 paymentRouter.post('/webhook/:provider', async (req,res) => {
