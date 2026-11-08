@@ -96,6 +96,34 @@ describe('driver app', () => {
     await screen.findByRole('list', { name: 'History' });
     expect(screen.queryByLabelText('Share location')).not.toBeInTheDocument();
   });
+
+  it('earnings: reads them with the profile id learned from an assigned order, read-only', async () => {
+    const row = { id: 'e1', driver_id: 'profile-1', order_id: 'abcdef12-0000', status: 'ELIGIBLE', created_at: '2026-01-01T00:00:00Z', net_amount: '5.00', net_amount_cents: '500' };
+    const api = fakeApi([mkOrder('aaaaaaaa-1', 'DELIVERED')], { 'GET /api/drivers/profile-1/earnings': () => json(200, [row]) });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'Earnings' }));
+    expect(await screen.findByText(/\$5\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Payouts are not enabled/)).toBeInTheDocument();
+    expect(api.calls.filter((c) => c.path.includes('earnings')).every((c) => c.method === 'GET')).toBe(true);
+  });
+
+  it('earnings: explains the empty state and never calls the API without a profile id', async () => {
+    const api = fakeApi([]);
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'Earnings' }));
+    expect(await screen.findByText(/once you have been assigned a delivery/)).toBeInTheDocument();
+    expect(api.calls.some((c) => c.path.includes('earnings'))).toBe(false);
+  });
+
+  it('notifications tab lists the driver\'s notifications', async () => {
+    const api = fakeApi([], { 'GET /api/notifications': () => json(200, [{ id: 'n1', event_type: 'X', title: 'New job', body: 'b', order_id: null, read_at: null, created_at: '2026-01-01T00:00:00Z' }]) });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    expect(await screen.findByText('New job')).toBeInTheDocument();
+  });
 });
 
 describe('useLocationSharing', () => {

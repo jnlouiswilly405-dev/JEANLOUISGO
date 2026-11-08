@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AuthGate, ErrorBanner, useAsync, useSession } from '@multigo/app-shell';
-import { formatMoney, type Order } from '@multigo/api-client';
+import { AuthGate, ErrorBanner, NotificationsPanel, useAsync, useSession } from '@multigo/app-shell';
+import { formatMoney, netAmountCents, type Order } from '@multigo/api-client';
 import { ACTIVE_STATUSES, nextDriverAction } from './actions.js';
 import { useLocationSharing, type GeoLike } from './useLocationSharing.js';
 
@@ -76,17 +76,55 @@ function Deliveries({ geolocation }: { geolocation?: GeoLike | null }) {
   );
 }
 
+function Earnings() {
+  const { client } = useSession();
+  const orders = useAsync(() => client.orders.list(), [client]);
+  // The only place the API reveals a driver profile id is an assigned order.
+  const profileId = orders.data?.find((o) => o.driverId)?.driverId;
+  const rows = useAsync(() => (profileId ? client.finance.driverEarnings(profileId) : Promise.resolve([])), [client, profileId]);
+  return (
+    <main aria-label="Earnings">
+      <h2>Earnings</h2>
+      <p className="muted">Read-only view. Payouts are not enabled, and the earnings policy has not been decided.</p>
+      {(orders.loading || rows.loading) && !rows.data && <p role="status">Loading…</p>}
+      <ErrorBanner message={orders.error ?? rows.error} />
+      {orders.data && !profileId && <p className="muted">Your earnings appear once you have been assigned a delivery.</p>}
+      {profileId && rows.data && rows.data.length === 0 && <p className="muted">No eligible earnings.</p>}
+      <ul>
+        {rows.data?.map((e) => {
+          const cents = netAmountCents(e);
+          return (
+            <li key={e.id}>
+              <span>Order #{e.order_id.slice(0, 8)} · {new Date(e.created_at).toLocaleDateString()}</span>
+              <span>{cents === null ? '—' : formatMoney(cents)} · <em>{e.status}</em></span>
+            </li>
+          );
+        })}
+      </ul>
+    </main>
+  );
+}
+
+const TABS = { deliveries: 'Deliveries', earnings: 'Earnings', notifications: 'Notifications' } as const;
+type Tab = keyof typeof TABS;
+
 function Shell({ geolocation }: { geolocation?: GeoLike | null }) {
   const { user, logout } = useSession();
+  const [tab, setTab] = useState<Tab>('deliveries');
   return (
     <>
       <header>
         <strong>MULTIGO Driver</strong>
+        <nav aria-label="Main">
+          {(Object.keys(TABS) as Tab[]).map((t) => <button key={t} onClick={() => setTab(t)}>{TABS[t]}</button>)}
+        </nav>
         <span style={{ flex: 1 }} />
         <span className="muted">{user?.displayName}</span>
         <button onClick={logout}>Sign out</button>
       </header>
-      <Deliveries geolocation={geolocation} />
+      {tab === 'deliveries' && <Deliveries geolocation={geolocation} />}
+      {tab === 'earnings' && <Earnings />}
+      {tab === 'notifications' && <main><NotificationsPanel /></main>}
     </>
   );
 }
