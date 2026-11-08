@@ -1,2 +1,64 @@
-JLGO-FINAL-B-1016 — Option B : Préparation CI/PostgreSQL
-Portée : Il s'agit d'une modification de finalisation uniquement. Le développement des fonctionnalités reste gelé. Les modules d'application existants et les phases terminées n'ont pas été intentionnellement réécrits. Ajout du fichier `.github/workflows/ci-postgres.yml` : workflow GitHub Actions pour les envois et les demandes de fusion vers la branche principale, ainsi que pour la distribution manuelle. Ce workflow provisionne PostgreSQL 16, exécute le test d'assurance qualité statique, applique le fichier `database/schema.sql` et les migrations 006 à 013 dans l'ordre, puis compile, teste et vérifie les types du backend. Tests effectués dans cet espace de travail : `bash tests/final/static-qa.sh` : RÉUSSI (STATIC_QA_PASS). `npm install --ignore-scripts --no-audit --no-fund` : NON TERMINÉ ; la commande a expiré dans cet environnement. Exécution des migrations PostgreSQL : NON EXÉCUTÉE localement car le serveur/client PostgreSQL ne sont pas disponibles dans cet espace de travail. Exécution de GitHub Actions : NON EXÉCUTÉ depuis cet espace de travail. Le workflow doit être envoyé sur GitHub pour obtenir le résultat CI officiel. Déploiement en production : NE PAS EXÉCUTER. Étape cruciale de la mise en production : ne marquez pas la version comme prête pour la production tant que la tâche PostgreSQL de GitHub Actions n'est pas réussie. Le dépôt ne contient actuellement aucun fichier de verrouillage npm validé ; l'installation des dépendances utilise donc `npm install`. Veuillez ajouter un fichier de verrouillage lors d'une étape de gestion des dépendances distincte et validée avant de vous fier à la reproductibilité des builds CI npm.
+# JEANLOUISGO — Backend V45 (branche de récupération)
+
+Branche : `recovery/v45-source-restore`. Ce dépôt contient le backend V45 restauré. **Il n'est pas prêt pour la production.**
+
+## État réel
+
+| Élément | État |
+|---|---|
+| Backend TypeScript (Express 5, PostgreSQL) | Restauré et fonctionnel |
+| Migrations PostgreSQL 006–017 + `database/schema.sql` | Appliquées en CI sur PostgreSQL 16 |
+| Dépendances | `package-lock.json` validé ; installation reproductible avec `npm ci` |
+| CI (`.github/workflows/ci-postgres.yml`) | Node 22 : `npm ci`, schéma, migrations, QA statique, build, tests unitaires, tests d'intégration PostgreSQL |
+| Tests unitaires (`npm test`) | Vitest, sans base de données |
+| Tests d'intégration (`npm run test:int`) | Vitest sur PostgreSQL 16 (`backend/integration/*.int.ts`) ; refusent de s'exécuter si le nom de la base ne se termine pas par `_test` |
+| Lint / typage (`npm run lint`) | `tsc --noEmit` |
+
+Le statut officiel et à jour de la CI est celui de GitHub Actions pour le dernier commit de la branche ; ce fichier ne le fige pas.
+
+## Modules backend
+
+Authentification, commandes, paiements, dispatch, livreurs, commerçants, catalogue, suivi, livraison, chat, notifications, avis, promotions, règlements (settlements) et administration.
+
+### Outbox des règlements
+
+- Le worker (`backend/src/modules/settlements/outbox-runner.ts`) est **désactivé par défaut**. Il ne démarre que si `OUTBOX_WORKER_ENABLED=true`. Arrêt propre sur SIGTERM/SIGINT.
+- Son gestionnaire est **fail-closed** : tout événement `SETTLEMENT_REQUESTED` valide se termine en échec `PAYOUT_PROVIDER_CONFIRMATION_REQUIRED` puis `BLOCKED` après le nombre maximal de tentatives. Aucun gain, écriture de grand livre, règlement ou paiement n'est créé, et rien n'est marqué `PAID`.
+- Un événement `PROCESSING` dont le bail a expiré et dont les tentatives sont épuisées passe en `BLOCKED` au lieu d'être repris indéfiniment.
+- Visibilité administrateur en lecture seule : `GET /api/admin/outbox/blocked` (rôle `ADMIN`). Filtres : `eventType`, `aggregateId` ; pagination : `limit` (1–100, défaut 50) et `offset`. Le contenu (`payload`), le jeton de bail et la clé de dédoublonnage ne sont jamais exposés, et la raison d'échec est assainie.
+
+## Démarrage local
+
+```bash
+npm ci
+npm run build
+npm test
+# PostgreSQL 16 requis pour les tests d'intégration (base dont le nom se termine par _test) :
+DATABASE_URL=postgres://user:pass@localhost:5432/xxx_test npm run test:int
+bash tests/final/static-qa.sh
+bash -n database/migrate.sh
+```
+
+Voir `.env.example` pour les variables d'environnement.
+
+## Frontends
+
+`apps/customer`, `apps/driver`, `apps/merchant` et `apps/admin` ne contiennent que des README de substitution : **les sources frontend sont manquantes**.
+
+## Sécurité — paiements
+
+- Le fournisseur Stripe est un **stub**. Les paiements réels, remboursements et versements (payouts) restent **désactivés**.
+- La politique financière des règlements n'est pas décidée (`docs/SETTLEMENT_FINANCIAL_POLICY_GATE.md`) ; la création réelle de règlements reste bloquée.
+- Ne pas déployer en production avant décision explicite.
+
+## Points bloquants restants
+
+1. Politique financière des règlements/versements non décidée.
+2. Fournisseur de paiement Stripe non implémenté (stub) ; remboursements et versements désactivés.
+3. Sources frontend manquantes.
+4. Vérification octet par octet de la restauration impossible : l'archive ZIP d'origine ou l'export texte original est nécessaire. Cette vérification n'est **pas** terminée.
+5. Avertissement du script d'installation d'esbuild non traité (aucun changement `allowScripts`).
+
+## Documentation
+
+Voir `docs/` (audits, portes de validation des paiements, politique de règlement, rapports de validation V45).
