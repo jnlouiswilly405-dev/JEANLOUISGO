@@ -3,8 +3,9 @@ import { AuthGate, useSession } from '@multigo/app-shell';
 import { Overview } from './pages/Overview.js';
 import { BlockedOutbox } from './pages/BlockedOutbox.js';
 import { Unreferenced } from './pages/Unreferenced.js';
+import { Promotions } from './pages/Promotions.js';
 
-const TABS = { overview: 'Overview', outbox: 'Blocked outbox', payments: 'Unreferenced payments' } as const;
+const TABS = { overview: 'Overview', outbox: 'Blocked outbox', payments: 'Unreferenced payments', promos: 'Promotions' } as const;
 type Tab = keyof typeof TABS;
 
 function Shell() {
@@ -21,10 +22,11 @@ function Shell() {
         <button onClick={logout}>Sign out</button>
       </header>
       <main>
-        <p className="banner">Read-only console. Settlement, payouts, refunds and Connect are disabled in this build.</p>
+        <p className="banner">Financial views are read-only; promotion management is the only write action. Settlement, payouts, refunds and Connect are disabled in this build.</p>
         {tab === 'overview' && <Overview />}
         {tab === 'outbox' && <BlockedOutbox />}
         {tab === 'payments' && <Unreferenced />}
+        {tab === 'promos' && <Promotions />}
       </main>
     </>
   );

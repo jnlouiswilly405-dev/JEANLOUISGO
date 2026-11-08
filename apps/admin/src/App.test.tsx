@@ -12,6 +12,7 @@ const event = (n: number) => ({
 });
 
 function fakeApi(opts: { loginUser?: unknown; outboxTotal?: number } = {}) {
+  const promos: any[] = [{ id: 'p1', code: 'WELCOME', discountType: 'PERCENT', percent: 10, maxDiscountCents: null, minOrderTotalCents: 0, usageLimit: 5, usedCount: 1, startsAt: 's', expiresAt: null, active: true }];
   const calls: { method: string; path: string; query: URLSearchParams }[] = [];
   const impl = vi.fn(async (url: string, init: RequestInit = {}) => {
     const u = new URL(url);
@@ -29,6 +30,18 @@ function fakeApi(opts: { loginUser?: unknown; outboxTotal?: number } = {}) {
     }
     if (key === 'GET /api/admin/payments/unreferenced') {
       return json(200, { items: [{ paymentId: 'pay-1', orderId: 'ord-1', amountCents: 1250, currency: 'USD', createdAt: '2026-01-01T00:00:00Z', ageMinutes: 42 }], total: 1, limit: 20, offset: 0, olderThanMinutes: 15 });
+    }
+    if (key === 'GET /api/admin/promos') return json(200, { items: promos, total: promos.length, limit: 20, offset: 0 });
+    if (key === 'POST /api/admin/promos') {
+      const b = JSON.parse(init.body as string);
+      const p = { id: 'p2', code: b.code.toUpperCase(), discountType: b.discountType, percent: b.percent, amountCents: b.amountCents, maxDiscountCents: null, minOrderTotalCents: 0, usageLimit: b.usageLimit ?? null, usedCount: 0, startsAt: 's', expiresAt: null, active: true };
+      promos.push(p);
+      return json(201, p);
+    }
+    if (key.startsWith('POST /api/admin/promos/') && key.endsWith('/active')) {
+      const p = promos.find((x) => u.pathname.includes(x.id))!;
+      p.active = JSON.parse(init.body as string).active;
+      return json(200, p);
     }
     return json(404, { error: `no route ${key}` });
   });
@@ -61,7 +74,7 @@ describe('admin app', () => {
     await signIn();
     expect(await screen.findByText('ok')).toBeInTheDocument();
     expect(await screen.findByText('1200')).toBeInTheDocument();
-    expect(screen.getByText(/Read-only console/)).toBeInTheDocument();
+    expect(screen.getByText(/Financial views are read-only/)).toBeInTheDocument();
   });
 
   it('lists BLOCKED outbox events with the sanitized failure reason', async () => {
@@ -99,5 +112,23 @@ describe('admin app', () => {
     expect(await screen.findByText('pay-1')).toBeInTheDocument();
     expect(screen.getByText('42')).toBeInTheDocument();
     expect(api.calls.filter((c) => c.path.startsWith('/api/admin')).every((c) => c.method === 'GET')).toBe(true);
+  });
+
+  it('creates and deactivates promotions without touching financial endpoints', async () => {
+    const api = fakeApi();
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'Promotions' }));
+    expect(await screen.findByText('WELCOME')).toBeInTheDocument();
+    expect(screen.getByText(/platform-funded by default/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Code'), 'spring');
+    await userEvent.type(screen.getByLabelText('Percent (1–100)'), '15');
+    await userEvent.click(screen.getByRole('button', { name: 'Create promotion' }));
+    expect(await screen.findByText('SPRING')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate WELCOME' }));
+    expect(await screen.findByRole('button', { name: 'Activate WELCOME' })).toBeInTheDocument();
+    const writes = api.calls.filter((c) => c.method !== 'GET' && c.path !== '/api/auth/login').map((c) => c.path);
+    expect(writes.every((p) => p.startsWith('/api/admin/promos'))).toBe(true);
+    expect(writes.some((p) => /settle|payout|refund|earning/i.test(p))).toBe(false);
   });
 });
