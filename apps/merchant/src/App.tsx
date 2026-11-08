@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { AuthGate, NotificationsPanel, useSession } from '@multigo/app-shell';
 import { Orders } from './pages/Orders.js';
 import { Menu } from './pages/Menu.js';
+import { Reviews } from './pages/Reviews.js';
 import { Settlements } from './pages/Settlements.js';
 
-const TABS = { orders: 'Orders', menu: 'Menu', settlements: 'Settlements', notifications: 'Notifications' } as const;
+const TABS = { orders: 'Orders', menu: 'Menu', settlements: 'Settlements', reviews: 'Reviews', notifications: 'Notifications' } as const;
 type Tab = keyof typeof TABS;
 
 function Shell() {
@@ -24,6 +25,7 @@ function Shell() {
         {tab === 'orders' && <Orders />}
         {tab === 'menu' && <Menu />}
         {tab === 'settlements' && <Settlements />}
+        {tab === 'reviews' && <Reviews />}
         {tab === 'notifications' && <NotificationsPanel />}
       </main>
     </>

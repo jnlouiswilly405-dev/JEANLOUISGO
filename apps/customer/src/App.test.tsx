@@ -25,6 +25,7 @@ function fakeApi(overrides: Record<string, () => Response> = {}) {
       'POST /api/auth/login': { user, token: 'tok' },
       'GET /api/merchants': [merchant],
       'GET /api/catalog/merchant/m1': [product],
+      'GET /api/merchants/m1/reviews': { average: 4, count: 1, limit: 5, offset: 0, items: [{ id: 'r1', rating: 4, body: 'Tasty', createdAt: '2026-01-01T00:00:00Z' }] },
       'POST /api/orders': order,
       'GET /api/orders': [order],
       'GET /api/orders/o-1': order,
@@ -184,5 +185,13 @@ describe('customer app', () => {
     mount(api.impl);
     await signIn();
     expect(await screen.findByRole('form', { name: 'Sign in' })).toBeInTheDocument();
+  });
+
+  it('shows public reviews on the restaurant menu', async () => {
+    mount(fakeApi().impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'View menu' }));
+    expect(await screen.findByText('Tasty')).toBeInTheDocument();
+    expect(screen.getByText('4.0')).toBeInTheDocument();
   });
 });

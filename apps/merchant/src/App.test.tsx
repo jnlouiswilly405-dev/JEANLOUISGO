@@ -140,4 +140,15 @@ describe('merchant app', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Create restaurant' }));
     await vi.waitFor(() => expect(api.calls.find((c) => c.method === 'POST' && c.path === '/api/merchants')?.body).toEqual({ name: 'New Place' }));
   });
+
+  it('reviews: shows the average and public review text for the own restaurant only', async () => {
+    const api = fakeApi({ handlers: { 'GET /api/merchants/m1/reviews': () => json(200, { average: 4.5, count: 2, limit: 5, offset: 0, items: [{ id: 'r1', rating: 5, body: 'Great food', createdAt: '2026-01-01T00:00:00Z' }, { id: 'r2', rating: 4, body: null, createdAt: '2026-01-02T00:00:00Z' }] }) } });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(screen.getByRole('button', { name: 'Reviews' }));
+    expect(await screen.findByText('Great food')).toBeInTheDocument();
+    expect(screen.getByText('4.5')).toBeInTheDocument();
+    expect(api.calls.some((c) => c.path === '/api/merchants/m2/reviews')).toBe(false);
+    expect(api.calls.filter((c) => c.path.includes('reviews')).every((c) => c.method === 'GET')).toBe(true);
+  });
 });

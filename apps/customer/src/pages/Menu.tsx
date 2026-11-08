@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ErrorBanner, useAsync, useSession } from '@multigo/app-shell';
+import { ErrorBanner, ReviewList, useAsync, useSession } from '@multigo/app-shell';
 import { formatMoney, type Merchant } from '@multigo/api-client';
 import { addToCart, cartSubtotalCents, cartToOrderItems, setQuantity, type Cart } from '../cart.js';
 import { PromoPreview } from './PromoPreview.js';
@@ -46,6 +46,7 @@ export function Menu({ merchant, onOrdered }: { merchant: Merchant; onOrdered: (
           </li>
         ))}
       </ul>
+      <ReviewList merchantId={merchant.id} />
       <h3>Your order</h3>
       {lines.length === 0 && <p className="muted">Your cart is empty.</p>}
       <ul aria-label="Cart">
