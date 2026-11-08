@@ -67,6 +67,25 @@ describe('driver app', () => {
     expect(posts[2]).toMatchObject({ path: '/api/orders/cccccccc-3/delivery', body: { action: 'DELIVERED' } });
   });
 
+  it('chat: offered for active deliveries only, created on demand, and messages are sent to the thread', async () => {
+    const msgs: unknown[] = [];
+    const api = fakeApi([mkOrder('aaaaaaaa-1', 'IN_TRANSIT'), mkOrder('cccccccc-3', 'DELIVERED')], {
+      'POST /api/orders/aaaaaaaa-1/chat': () => json(200, { id: 't1', order_id: 'aaaaaaaa-1', created_at: '2026-01-01T00:00:00Z', closed_at: null }),
+      'GET /api/chat/t1/messages': () => json(200, msgs),
+      'POST /api/chat/t1/messages': () => { msgs.push({ id: 'm1', thread_id: 't1', sender_id: 'd-user', body: 'On my way', created_at: '2026-01-01T00:00:00Z' }); return json(201, msgs[0]); },
+    });
+    mount(api.impl);
+    await signIn();
+    const current = await screen.findByRole('list', { name: 'Current deliveries' });
+    expect(within(screen.getByRole('list', { name: 'History' })).queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument();
+    expect(api.calls.some((c) => c.path.includes('/chat'))).toBe(false);
+    await userEvent.click(within(current).getByRole('button', { name: 'Open chat' }));
+    await userEvent.type(await screen.findByLabelText('Message'), 'On my way');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/: On my way/)).toBeInTheDocument();
+    expect(api.calls.find((c) => c.method === 'POST' && c.path === '/api/chat/t1/messages')?.body).toEqual({ body: 'On my way' });
+  });
+
   it('shows the backend error when a transition is refused', async () => {
     const api = fakeApi([mkOrder('aaaaaaaa-1', 'IN_TRANSIT')], { 'POST /api/orders/aaaaaaaa-1/delivery': () => json(409, { error: 'INVALID_DELIVERY_TRANSITION' }) });
     mount(api.impl);
