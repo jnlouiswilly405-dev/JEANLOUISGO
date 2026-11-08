@@ -10,16 +10,23 @@ export function Menu({ merchant, onOrdered }: { merchant: Merchant; onOrdered: (
   const [cart, setCart] = useState<Cart>({});
   const [placing, setPlacing] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState<string | null>(null);
   const lines = Object.values(cart);
 
   async function placeOrder() {
     setPlacing(true);
     setOrderError(null);
     try {
-      const order = await client.orders.create({ merchantId: merchant.id, items: cartToOrderItems(cart) });
+      const order = await client.orders.create({ merchantId: merchant.id, items: cartToOrderItems(cart), ...(promoCode ? { promoCode } : {}) });
       onOrdered(order.id);
     } catch (e) {
-      setOrderError(e instanceof Error ? e.message : 'Could not place the order');
+      const text = e instanceof Error ? e.message : '';
+      setOrderError(
+        text.includes('PROMO_ALREADY_USED') ? 'You have already used this promo code. Remove it to place the order.'
+        : text.includes('PROMO_NOT_APPLICABLE') ? 'This promo code cannot be applied to this order.'
+        : text.includes('PROMO_INVALID') ? 'This promo code is no longer valid for this order.'
+        : text || 'Could not place the order',
+      );
     } finally {
       setPlacing(false);
     }
@@ -54,7 +61,7 @@ export function Menu({ merchant, onOrdered }: { merchant: Merchant; onOrdered: (
         ))}
       </ul>
       {lines.length > 0 && <p>Items subtotal: <strong>{formatMoney(cartSubtotalCents(cart))}</strong> <small className="muted">(delivery fee and final total are set by the server)</small></p>}
-      {lines.length > 0 && <PromoPreview subtotalCents={cartSubtotalCents(cart)} />}
+      {lines.length > 0 && <PromoPreview subtotalCents={cartSubtotalCents(cart)} onChange={setPromoCode} />}
       <ErrorBanner message={orderError} />
       <button disabled={lines.length === 0 || placing} onClick={placeOrder}>{placing ? 'Placing…' : 'Place order'}</button>
     </section>

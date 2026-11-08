@@ -71,7 +71,7 @@ export function createApiClient(opts: ApiClientOptions) {
     orders: {
       list: () => request('GET', '/api/orders', orderSchema.array()),
       get: (id: string) => request('GET', `/api/orders/${enc(id)}`, orderSchema),
-      create: (input: { merchantId: string; items: { productId: string; quantity: number }[]; deliveryFeeCents?: number }) => request('POST', '/api/orders', orderSchema, input),
+      create: (input: { merchantId: string; items: { productId: string; quantity: number }[]; deliveryFeeCents?: number; promoCode?: string }) => request('POST', '/api/orders', orderSchema, input),
       setStatus: (id: string, status: Exclude<OrderStatus, 'PENDING_PAYMENT'>) => request('POST', `/api/orders/${enc(id)}/status`, orderSchema, { status }),
       tracking: (orderId: string) => request('GET', `/api/orders/${enc(orderId)}/tracking`, trackingEventSchema.array()),
       advanceDelivery: (orderId: string, action: 'PICKED_UP' | 'DELIVERED') => request('POST', `/api/orders/${enc(orderId)}/delivery`, looseRowSchema, { action }),
@@ -97,7 +97,7 @@ export function createApiClient(opts: ApiClientOptions) {
       create: (input: { orderId: string; rating: number; body?: string; merchantId?: string }) => request('POST', '/api/reviews', looseRowSchema, input),
     },
     promos: {
-      // Preview only: the order API takes no promo code, so nothing here is applied to an order.
+      // Preview only: this never redeems. The code is applied (and re-validated) when the order is created.
       validate: (code: string, orderTotal: number) => request('POST', '/api/promos/validate', promoPreviewSchema, { code, orderTotal }),
     },
     // Read-only views of rows the backend already exposes. Nothing here can create, change or pay them.

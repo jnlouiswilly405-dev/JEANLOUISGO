@@ -68,6 +68,58 @@ describe('customer app', () => {
     expect(post.auth).toBe('Bearer tok');
   });
 
+  it('sends a checked promo code with the order, and drops it when the code is edited', async () => {
+    const api = fakeApi({
+      'POST /api/promos/validate': () => json(200, { promoId: 'p', code: 'SAVE10', discount: 2.4 }),
+      'POST /api/orders': () => json(201, { ...order, discountCents: 240, totalCents: 2460 }),
+      'GET /api/orders/o-1': () => json(200, { ...order, discountCents: 240, totalCents: 2460 }),
+    });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'View menu' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Margherita' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Increase Margherita' }));
+    await userEvent.type(screen.getByLabelText('Promo code'), 'SAVE10');
+    await userEvent.click(screen.getByRole('button', { name: 'Check code' }));
+    await screen.findByText(/Applied when you place the order/);
+    await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
+    const detail = await screen.findByRole('region', { name: 'Order details' });
+    expect(within(detail).getByText(/Discount −\$2.40/)).toBeInTheDocument();
+    expect(api.calls.find((c) => c.method === 'POST' && c.path === '/api/orders')!.body).toEqual({ merchantId: 'm1', items: [{ productId: 'p1', quantity: 2 }], promoCode: 'SAVE10' });
+  });
+
+  it('does not send a promo code that was checked and then edited', async () => {
+    const api = fakeApi({ 'POST /api/promos/validate': () => json(200, { promoId: 'p', code: 'SAVE10', discount: 2.4 }) });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'View menu' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Margherita' }));
+    await userEvent.type(screen.getByLabelText('Promo code'), 'SAVE10');
+    await userEvent.click(screen.getByRole('button', { name: 'Check code' }));
+    await screen.findByText(/Applied when you place the order/);
+    await userEvent.type(screen.getByLabelText('Promo code'), 'X');
+    await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
+    await screen.findByRole('region', { name: 'Order details' });
+    expect(api.calls.find((c) => c.method === 'POST' && c.path === '/api/orders')!.body).not.toHaveProperty('promoCode');
+  });
+
+  it('explains a promo rejection when placing the order and keeps the cart', async () => {
+    const api = fakeApi({
+      'POST /api/promos/validate': () => json(200, { promoId: 'p', code: 'SAVE10', discount: 1 }),
+      'POST /api/orders': () => json(400, { error: 'PROMO_ALREADY_USED' }),
+    });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'View menu' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Margherita' }));
+    await userEvent.type(screen.getByLabelText('Promo code'), 'SAVE10');
+    await userEvent.click(screen.getByRole('button', { name: 'Check code' }));
+    await screen.findByText(/Applied when you place the order/);
+    await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('You have already used this promo code');
+    expect(screen.getByRole('list', { name: 'Cart' })).toHaveTextContent('Margherita');
+  });
+
   it('shows the server error when an order is rejected and keeps the cart', async () => {
     const api = fakeApi({ 'POST /api/orders': () => json(409, { error: 'One or more products are unavailable' }) });
     mount(api.impl);

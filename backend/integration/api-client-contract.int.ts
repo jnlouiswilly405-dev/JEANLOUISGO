@@ -168,6 +168,18 @@ describe('api-client contract: notifications, reviews, promos, chat, read-only f
     expect(red.rows[0].n).toBe(0);
   });
 
+  it('promos: the client sends the code with the order and the server applies it', async () => {
+    const owner = await createUser(pool, 'MERCHANT');
+    const merchantId = await createMerchant(pool, owner.id);
+    const productId = await createProduct(pool, merchantId, 2000);
+    const code = `FO${randomUUID().slice(0, 8).toUpperCase()}`;
+    await pool.query(`INSERT INTO promo_codes (code,discount_type,discount_value) VALUES ($1,'PERCENT',10)`, [code]);
+    const c = clientFor((await createUser(pool, 'CUSTOMER')).token);
+    const order = await c.orders.create({ merchantId, items: [{ productId, quantity: 1 }], promoCode: code });
+    expect(order).toMatchObject({ subtotalCents: 2000, discountCents: 200, totalCents: 1800 });
+    await expect(c.orders.create({ merchantId, items: [{ productId, quantity: 1 }], promoCode: code })).rejects.toMatchObject({ status: 400 });
+  });
+
   it('chat: the client opens the order thread, exchanges messages and outsiders are refused', async () => {
     const owner = await createUser(pool, 'MERCHANT');
     const merchantId = await createMerchant(pool, owner.id);

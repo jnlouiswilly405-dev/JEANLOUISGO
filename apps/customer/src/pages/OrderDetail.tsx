@@ -36,7 +36,7 @@ export function OrderDetail({ id }: { id: string }) {
           <ul aria-label="Items">
             {o.items.map((i) => <li key={i.productId}><span>{i.quantity} × {i.name}</span><span>{formatMoney(i.unitPriceCents * i.quantity, o.currency)}</span></li>)}
           </ul>
-          <p>Subtotal {formatMoney(o.subtotalCents, o.currency)} · Delivery {formatMoney(o.deliveryFeeCents, o.currency)} · <strong>Total {formatMoney(o.totalCents, o.currency)}</strong></p>
+          <p>Subtotal {formatMoney(o.subtotalCents, o.currency)} · Delivery {formatMoney(o.deliveryFeeCents, o.currency)} · {o.discountCents ? <>Discount −{formatMoney(o.discountCents, o.currency)} · </> : null}<strong>Total {formatMoney(o.totalCents, o.currency)}</strong></p>
           {CHAT_STATUSES.includes(o.status) && <ChatToggle orderId={o.id} />}
           {o.status === 'DELIVERED' && <ReviewForm orderId={o.id} merchantId={o.merchantId} />}
           {last ? <p>Driver last seen at {last.lat.toFixed(4)}, {last.lng.toFixed(4)} ({new Date(last.recorded_at).toLocaleTimeString()})</p> : <p className="muted">No driver location yet.</p>}

@@ -3,10 +3,10 @@ import { ErrorBanner, useSession } from '@multigo/app-shell';
 import { formatMoney, type PromoPreview as Preview } from '@multigo/api-client';
 
 /**
- * Checks a promo code against the cart. The order API accepts no promo code, so this is a preview only
- * and the discount is never applied to the order total.
+ * Checks a promo code against the cart. Checking never redeems anything: the code is sent with the order
+ * and the server re-validates it and computes the discount, so the amount shown here is only an estimate.
  */
-export function PromoPreview({ subtotalCents }: { subtotalCents: number }) {
+export function PromoPreview({ subtotalCents, onChange }: { subtotalCents: number; onChange?: (code: string | null) => void }) {
   const { client } = useSession();
   const [code, setCode] = useState('');
   const [result, setResult] = useState<Preview | null>(null);
@@ -18,9 +18,12 @@ export function PromoPreview({ subtotalCents }: { subtotalCents: number }) {
     setBusy(true);
     setError(null);
     setResult(null);
+    onChange?.(null);
     try {
       // The backend's promo amounts are NUMERIC major units, so the cart total is sent in dollars, not cents.
-      setResult(await client.promos.validate(code.trim(), subtotalCents / 100));
+      const preview = await client.promos.validate(code.trim(), subtotalCents / 100);
+      setResult(preview);
+      onChange?.(code.trim());
     } catch (err) {
       setError(promoMessage(err instanceof Error ? err.message : ''));
     } finally {
@@ -30,13 +33,13 @@ export function PromoPreview({ subtotalCents }: { subtotalCents: number }) {
 
   return (
     <form onSubmit={check} aria-label="Promotion">
-      <label>Promo code<input value={code} onChange={(e) => setCode(e.target.value)} maxLength={64} /></label>
+      <label>Promo code<input value={code} onChange={(e) => { setCode(e.target.value); setResult(null); onChange?.(null); }} maxLength={64} /></label>
       <button type="submit" disabled={busy || code.trim() === ''}>Check code</button>
       <ErrorBanner message={error} />
       {result && (
         <p role="status">
           Code {result.code} is valid: {formatMoney(Math.round(result.discount * 100))} off.
-          {' '}<span className="muted">Preview only — it is not applied to your order yet.</span>
+          {' '}<span className="muted">{onChange ? 'Applied when you place the order; the server re-checks it.' : 'Preview only.'}</span>
         </p>
       )}
     </form>

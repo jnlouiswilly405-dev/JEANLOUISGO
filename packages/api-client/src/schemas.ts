@@ -31,6 +31,8 @@ export const orderSchema = z.object({
   subtotalCents: z.number(),
   deliveryFeeCents: z.number(),
   totalCents: z.number(),
+  // Derived by the backend (subtotal + delivery - total); absent on older servers.
+  discountCents: z.number().optional(),
   currency: z.string(),
   status: orderStatusSchema,
   createdAt: z.string(),
