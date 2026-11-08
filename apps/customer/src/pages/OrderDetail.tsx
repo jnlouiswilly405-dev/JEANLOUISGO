@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { ErrorBanner, useAsync, useSession } from '@multigo/app-shell';
 import { formatMoney } from '@multigo/api-client';
+import { PaymentStep } from './PaymentStep.js';
 
 const TERMINAL = ['DELIVERED', 'CANCELLED', 'REFUNDED'];
 const POLL_MS = 10_000;
@@ -29,7 +30,7 @@ export function OrderDetail({ id }: { id: string }) {
       {o && (
         <>
           <p>Status: <strong>{o.status}</strong></p>
-          {o.status === 'PENDING_PAYMENT' && <p className="muted">Awaiting payment. Card payment is not available in this build yet.</p>}
+          {o.status === 'PENDING_PAYMENT' && <PaymentStep orderId={o.id} amountCents={o.totalCents} onSubmitted={reloadOrder} />}
           <ul aria-label="Items">
             {o.items.map((i) => <li key={i.productId}><span>{i.quantity} × {i.name}</span><span>{formatMoney(i.unitPriceCents * i.quantity, o.currency)}</span></li>)}
           </ul>

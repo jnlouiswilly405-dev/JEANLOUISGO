@@ -61,7 +61,7 @@ describe('customer app', () => {
     const detail = await screen.findByRole('region', { name: 'Order details' });
     expect(await within(detail).findByText('PENDING_PAYMENT')).toBeInTheDocument();
     expect(within(detail).getByText(/Total \$27.00/)).toBeInTheDocument();
-    expect(within(detail).getByText(/Card payment is not available in this build yet/)).toBeInTheDocument();
+    expect(within(detail).getByText(/Card payment is unavailable: a Stripe test publishable key/)).toBeInTheDocument();
 
     const post = api.calls.find((c) => c.method === 'POST' && c.path === '/api/orders')!;
     expect(post.body).toEqual({ merchantId: 'm1', items: [{ productId: 'p1', quantity: 2 }] });
