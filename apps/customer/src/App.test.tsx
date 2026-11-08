@@ -102,6 +102,31 @@ describe('customer app', () => {
     expect(await screen.findByText('Driver on the way')).toBeInTheDocument();
   });
 
+  it('opens order chat only on demand and only once the order is paid', async () => {
+    const api = fakeApi({
+      'GET /api/orders/o-1': () => json(200, { ...order, status: 'PAID' }),
+      'POST /api/orders/o-1/chat': () => json(200, { id: 't1', order_id: 'o-1', created_at: '2026-01-01T00:00:00Z', closed_at: null }),
+      'GET /api/chat/t1/messages': () => json(200, [{ id: 'm1', thread_id: 't1', sender_id: 'x', body: 'Hello from the kitchen', created_at: '2026-01-01T10:00:00Z' }]),
+    });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'My orders' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Details' }));
+    await screen.findByRole('region', { name: 'Order details' });
+    expect(api.calls.some((c) => c.path.endsWith('/chat'))).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    expect(await screen.findByText(/Hello from the kitchen/)).toBeInTheDocument();
+  });
+
+  it('does not offer chat for an unpaid order', async () => {
+    mount(fakeApi().impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'My orders' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Details' }));
+    await screen.findByRole('region', { name: 'Order details' });
+    expect(screen.queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument();
+  });
+
   it('returns to the sign-in form after the session expires (401)', async () => {
     const api = fakeApi({ 'GET /api/merchants': () => json(401, { error: 'Invalid or expired token' }) });
     mount(api.impl);

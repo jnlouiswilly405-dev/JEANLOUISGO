@@ -45,8 +45,16 @@ describe('merchant app', () => {
     mount(fakeApi({ orders: [mkOrder('aaaaaaaa-1', 'PAID'), mkOrder('bbbbbbbb-2', 'ACCEPTED'), mkOrder('cccccccc-3', 'PREPARING'), mkOrder('dddddddd-4', 'READY'), mkOrder('eeeeeeee-5', 'PENDING_PAYMENT')] }).impl);
     await signIn();
     const items = await screen.findAllByRole('listitem');
-    const labels = items.map((li) => within(li).queryByRole('button')?.textContent ?? null);
+    const labels = items.map((li) => within(li).queryAllByRole('button').map((b) => b.textContent).find((t) => t !== 'Open chat') ?? null);
     expect(labels).toEqual(['Accept', 'Start preparing', 'Mark ready', null, null]);
+  });
+
+  it('offers chat only for orders that are paid or later', async () => {
+    mount(fakeApi({ orders: [mkOrder('aaaaaaaa-1', 'PAID'), mkOrder('eeeeeeee-5', 'PENDING_PAYMENT')] }).impl);
+    await signIn();
+    const items = await screen.findAllByRole('listitem');
+    expect(within(items[0]).getByRole('button', { name: 'Open chat' })).toBeInTheDocument();
+    expect(within(items[1]).queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument();
   });
 
   it('sends the status transition and reloads the list', async () => {

@@ -79,3 +79,11 @@ export function ChatPanel({ orderId }: { orderId: string }) {
     </section>
   );
 }
+
+/** Opens the chat only on demand, so merely viewing an order never creates a thread. */
+export function ChatToggle({ orderId }: { orderId: string }) {
+  const [open, setOpen] = useState(false);
+  return open
+    ? <ChatPanel orderId={orderId} />
+    : <button type="button" onClick={() => setOpen(true)}>Open chat</button>;
+}

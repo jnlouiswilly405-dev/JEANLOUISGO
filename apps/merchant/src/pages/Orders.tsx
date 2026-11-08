@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ErrorBanner, useAsync, useSession } from '@multigo/app-shell';
+import { ChatToggle, ErrorBanner, useAsync, useSession } from '@multigo/app-shell';
 import { formatMoney, merchantNextStatus, type Order } from '@multigo/api-client';
 
+const CHAT_STATUSES = ['PAID', 'ACCEPTED', 'PREPARING', 'READY', 'ASSIGNED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED'];
 const POLL_MS = 15_000;
 const ACTION_LABEL = { ACCEPTED: 'Accept', PREPARING: 'Start preparing', READY: 'Mark ready' } as const;
 
@@ -43,6 +44,7 @@ export function Orders() {
             <li key={o.id}>
               <span>#{o.id.slice(0, 8)} · {formatMoney(o.totalCents, o.currency)} · <em>{o.status}</em></span>
               {action && <button disabled={busyId === o.id} onClick={() => advance(o, action.status)}>{action.label}</button>}
+              {CHAT_STATUSES.includes(o.status) && <ChatToggle orderId={o.id} />}
             </li>
           );
         })}

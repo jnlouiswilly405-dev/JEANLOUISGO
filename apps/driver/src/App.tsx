@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AuthGate, ErrorBanner, NotificationsPanel, useAsync, useSession } from '@multigo/app-shell';
+import { AuthGate, ChatToggle, ErrorBanner, NotificationsPanel, useAsync, useSession } from '@multigo/app-shell';
 import { formatMoney, netAmountCents, type Order } from '@multigo/api-client';
 import { ACTIVE_STATUSES, nextDriverAction } from './actions.js';
 import { useLocationSharing, type GeoLike } from './useLocationSharing.js';
@@ -42,6 +42,7 @@ function OrderCard({ order, onChanged, geolocation }: { order: Order; onChanged:
         )}
         {action && <button disabled={busy} onClick={run}>{action.label}</button>}
       </span>
+      {active && <ChatToggle orderId={order.id} />}
       <ErrorBanner message={error ?? location.error} />
     </li>
   );
