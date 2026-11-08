@@ -72,13 +72,13 @@ Stack (owner-approved): React 19, Vite, TypeScript, Vitest + Testing Library; se
 |---|---|---|
 | `packages/api-client` | auth, merchants, catalog, orders, payments (create), tracking, driver location/delivery, notifications, admin reads | refunds, settlements, earnings, payouts (deliberately absent; a unit test asserts this) |
 | `packages/app-shell` | in-memory token mirrored to sessionStorage, cleared on logout/401, wrong-role rejection | refresh tokens (backend has none) |
-| Customer | browse, cart, order, list, detail with polling and driver location, Stripe Payment Element (sandbox), notifications, reviews on DELIVERED orders, promo preview only (orders accept no promo) | chat (blocked: no backend thread API) |
-| Merchant | order list with only the valid next status, menu/restaurant management for owned restaurants, read-only settlements, notifications | write actions on settlements (none exist) |
-| Driver | active/history, delivery progression, opt-in throttled location sharing, read-only earnings, notifications | the driver learns its profile id only from an assigned order (no profile endpoint) |
+| Customer | browse, cart, order, list, detail with polling and driver location, Stripe Payment Element (sandbox), order chat, notifications, reviews on DELIVERED orders, promo code applied by the server at order creation | nothing outstanding beyond polling-only chat |
+| Merchant | order list with only the valid next status, menu/restaurant management for owned restaurants, read-only settlements, notifications, order chat | write actions on settlements (none exist) |
+| Driver | active/history, delivery progression, opt-in throttled location sharing, read-only earnings, notifications, order chat | the driver learns its profile id only from an assigned order (no profile endpoint) |
 | Admin | health, financial summary (read-only), blocked outbox (paginated, filtered), unreferenced payments | any write action |
 
 Payment safety: `PaymentStep` accepts only `VITE_STRIPE_PUBLISHABLE_KEY` values starting with `pk_test_` and renders no form otherwise. It never sets an order to PAID; PAID comes only from the backend's verified webhook, and the UI just waits and re-reads the order. Stripe.js is loaded from Stripe at runtime. Built bundles were scanned and contain no `sk_`, `whsec_` or `pk_live` strings.
 
-Backend gaps behind unbuilt/limited features: `FRONTEND_BACKEND_DEPENDENCIES.md`. Stripe sandbox E2E (`STRIPE_SANDBOX_E2E.md`) is written but NOT executed.
+Backend gaps for chat, notifications, reviews and promos were fixed (see `FRONTEND_BACKEND_DEPENDENCIES.md` for what each now does and what remains). Stripe sandbox E2E (`STRIPE_SANDBOX_E2E.md`) is written but NOT executed.
 
 Open decisions: UI language and visual design (owner), hosting and CORS origins, and whether to add the unbuilt read-only views. Byte-exact archive verification remains INCOMPLETE.

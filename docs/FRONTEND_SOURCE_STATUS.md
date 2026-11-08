@@ -6,9 +6,9 @@ Since the owner's approval, new apps have been **reconstructed** (new code, writ
 
 | App | Path | Original source | Reconstruction (branch `recovery/v45-frontend-reconstruction`) |
 |---|---|---|---|
-| Customer | `apps/customer/` | missing | React 19 + Vite + TS: browse, cart, order, order tracking, sandbox card payment (`pk_test_` only), notifications, reviews, promo preview |
-| Driver | `apps/driver/` | missing | active deliveries, delivery progression, opt-in location sharing, read-only earnings, notifications |
-| Merchant | `apps/merchant/` | missing | order status actions, menu and restaurant management, read-only settlements, notifications |
+| Customer | `apps/customer/` | missing | React 19 + Vite + TS: browse, cart, order, order tracking, sandbox card payment (`pk_test_` only), order chat, notifications, reviews, promo codes |
+| Driver | `apps/driver/` | missing | active deliveries, delivery progression, opt-in location sharing, read-only earnings, notifications, order chat |
+| Merchant | `apps/merchant/` | missing | order status actions, menu and restaurant management, read-only settlements, notifications, order chat |
 | Admin | `apps/admin/` | missing | read-only: health, financial summary, blocked outbox, unreferenced payments |
 | Shared | `packages/api-client`, `packages/app-shell` | n/a | typed client and session/role gate |
 
