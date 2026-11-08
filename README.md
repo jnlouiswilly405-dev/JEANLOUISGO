@@ -51,7 +51,7 @@ Les sources frontend **d'origine sont toujours manquantes** (non récupérées).
 - `apps/admin` : console en **lecture seule** (santé, synthèse financière, événements outbox bloqués, paiements sans référence).
 - `packages/api-client`, `packages/app-shell` : client typé et session partagés.
 
-Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|admin>-app` (proxy `/api` vers `VITE_DEV_API_TARGET`, défaut `http://localhost:4000`). Non construits : chat, notifications, avis, promotions, vues gains/règlements. Détails : `docs/FRONTEND_RECOVERY_PLAN.md` (section 6).
+Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|admin>-app` (proxy `/api` vers `VITE_DEV_API_TARGET`, défaut `http://localhost:4000`). Ajouts : notifications (client, marchand, livreur), avis et aperçu de code promo (client, aperçu seulement), règlements (marchand) et gains (livreur) en **lecture seule**. Non construit : chat (le backend ne crée ni ne liste de fils). Dépendances et lacunes backend : `docs/FRONTEND_BACKEND_DEPENDENCIES.md`. Test E2E Stripe sandbox préparé mais **non exécuté** (`docs/STRIPE_SANDBOX_E2E.md`). Détails : `docs/FRONTEND_RECOVERY_PLAN.md` (section 6).
 
 ## Sécurité — paiements
 
