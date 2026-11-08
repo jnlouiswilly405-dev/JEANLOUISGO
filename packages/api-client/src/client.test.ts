@@ -95,4 +95,20 @@ describe('format helpers', () => {
     expect(netAmountCents({ net_amount_cents: null, net_amount: '12.34' })).toBe(1234);
     expect(netAmountCents({})).toBeNull();
   });
+
+  it('lists merchant reviews and manages promos via the documented endpoints', async () => {
+    const list = setup(reply(200, { average: 4.5, count: 1, limit: 20, offset: 0, items: [{ id: 'r', rating: 5, body: null, createdAt: 'x' }] }));
+    expect((await list.client.reviews.forMerchant('m1')).average).toBe(4.5);
+    expect((list.fetchImpl.mock.calls[0] as unknown as [string])[0]).toContain('/api/merchants/m1/reviews');
+
+    const promo = { id: 'p', code: 'A', discountType: 'FIXED', amountCents: 100, maxDiscountCents: null, minOrderTotalCents: 0, usageLimit: null, usedCount: 0, startsAt: 's', expiresAt: null, active: true };
+    const a = setup(reply(201, promo));
+    await a.client.admin.promos.create({ code: 'AAA', discountType: 'FIXED', amountCents: 100 });
+    const [url, init] = a.fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain('/api/admin/promos');
+    expect(init.method).toBe('POST');
+    const b = setup(reply(200, { ...promo, active: false }));
+    expect((await b.client.admin.promos.setActive('p', false)).active).toBe(false);
+    expect((b.fetchImpl.mock.calls[0] as unknown as [string])[0]).toContain('/api/admin/promos/p/active');
+  });
 });

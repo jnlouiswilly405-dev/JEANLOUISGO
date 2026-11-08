@@ -125,3 +125,33 @@ export const chatMessageSchema = z.object({
 }).passthrough();
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export const chatMessagesSchema = z.array(chatMessageSchema);
+
+export const reviewListSchema = z.object({
+  average: z.number().nullable(),
+  count: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+  items: z.array(z.object({ id: z.string(), rating: z.number(), body: z.string().nullable(), createdAt: z.string() })),
+});
+export type ReviewList = z.infer<typeof reviewListSchema>;
+
+export const adminPromoSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  discountType: z.enum(['PERCENT', 'FIXED']),
+  percent: z.number().optional(),
+  amountCents: z.number().optional(),
+  maxDiscountCents: z.number().nullable(),
+  minOrderTotalCents: z.number(),
+  usageLimit: z.number().nullable(),
+  usedCount: z.number(),
+  startsAt: z.string(),
+  expiresAt: z.string().nullable(),
+  active: z.boolean(),
+});
+export type AdminPromo = z.infer<typeof adminPromoSchema>;
+export const adminPromoListSchema = z.object({ items: z.array(adminPromoSchema), total: z.number(), limit: z.number(), offset: z.number() });
+export interface AdminPromoInput {
+  code: string; discountType: 'PERCENT' | 'FIXED'; percent?: number; amountCents?: number;
+  maxDiscountCents?: number | null; minOrderTotalCents?: number; usageLimit?: number | null; startsAt?: string; expiresAt?: string | null;
+}

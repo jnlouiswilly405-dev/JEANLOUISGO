@@ -1,7 +1,7 @@
 import { z, type ZodType } from 'zod';
 import {
   authResultSchema, blockedOutboxSchema, chatMessageSchema, chatMessagesSchema, chatThreadSchema, chatThreadsSchema, earningSchema, healthSchema, looseRowSchema, looseRowsSchema, meSchema,
-  merchantSchema, notificationSchema, notificationsSchema, orderSchema, paymentSchema, productSchema, promoPreviewSchema,
+  merchantSchema, notificationSchema, notificationsSchema, orderSchema, paymentSchema, productSchema, promoPreviewSchema, reviewListSchema, adminPromoSchema, adminPromoListSchema, type AdminPromoInput,
   settlementSchema, trackingEventSchema, unreferencedPaymentsSchema,
   type OrderStatus,
 } from './schemas.js';
@@ -95,6 +95,7 @@ export function createApiClient(opts: ApiClientOptions) {
     },
     reviews: {
       create: (input: { orderId: string; rating: number; body?: string; merchantId?: string }) => request('POST', '/api/reviews', looseRowSchema, input),
+      forMerchant: (merchantId: string, q: { limit?: number; offset?: number } = {}) => request('GET', `/api/merchants/${merchantId}/reviews`, reviewListSchema, undefined, q),
     },
     promos: {
       // Preview only: this never redeems. The code is applied (and re-validated) when the order is created.
@@ -109,6 +110,11 @@ export function createApiClient(opts: ApiClientOptions) {
       health: () => request('GET', '/api/admin/health', healthSchema),
       financialSummary: () => request('GET', '/api/admin/financial-summary', looseRowsSchema),
       blockedOutbox: (q: { eventType?: string; aggregateId?: string; limit?: number; offset?: number } = {}) => request('GET', '/api/admin/outbox/blocked', blockedOutboxSchema, undefined, q),
+      promos: {
+        list: (q: { limit?: number; offset?: number } = {}) => request('GET', '/api/admin/promos', adminPromoListSchema, undefined, q),
+        create: (input: AdminPromoInput) => request('POST', '/api/admin/promos', adminPromoSchema, input),
+        setActive: (id: string, active: boolean) => request('POST', `/api/admin/promos/${id}/active`, adminPromoSchema, { active }),
+      },
       unreferencedPayments: (q: { olderThanMinutes?: number; limit?: number; offset?: number } = {}) => request('GET', '/api/admin/payments/unreferenced', unreferencedPaymentsSchema, undefined, q),
     },
   };
