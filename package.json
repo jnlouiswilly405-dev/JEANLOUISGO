@@ -3,14 +3,15 @@
   "private": true,
   "version": "1.1.1",
   "workspaces": [
-    "backend"
+    "backend",
+    "packages/*"
   ],
   "scripts": {
     "dev": "npm run dev --workspace backend",
-    "build": "npm run build --workspace backend",
-    "test": "npm test --workspace backend",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
     "test:int": "npm run test:int --workspace backend",
-    "lint": "npm run lint --workspace backend"
+    "lint": "npm run lint --workspaces --if-present"
   },
   "engines": {
     "node": ">=22.12"
