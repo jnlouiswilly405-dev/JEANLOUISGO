@@ -35,7 +35,7 @@ export async function createPayment(input: { orderId: string; provider: PaymentP
     );
     validateNoActivePayment(activePayment.rowCount ? activePayment.rows[0].status : null);
     const paymentId = randomUUID();
-    const providerResult = await getProvider(input.provider).createPayment({ paymentId, amountCents: input.amountCents, currency: order.rows[0].currency, orderId: input.orderId });
+    const providerResult = await getProvider(input.provider).createPayment({ paymentId, amountCents: input.amountCents, currency: order.rows[0].currency, orderId: input.orderId, idempotencyKey: input.idempotencyKey });
     const payment = await client.query(
       `INSERT INTO payments(id,order_id,provider,provider_reference,amount_cents,status,idempotency_key)
        VALUES($1,$2,$3,$4,$5,$6,$7)
@@ -47,7 +47,7 @@ export async function createPayment(input: { orderId: string; provider: PaymentP
       await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) VALUES($1,'PLATFORM_CLEARING',NULL,'CREDIT',$2,$3)`, [input.orderId,input.amountCents,order.rows[0].currency]);
     }
     await client.query('COMMIT');
-    return payment.rows[0];
+    return providerResult.clientSecret ? { ...payment.rows[0], clientSecret: providerResult.clientSecret } : payment.rows[0];
   } catch (e) { await client.query('ROLLBACK'); throw e; }
   finally { client.release(); }
 }

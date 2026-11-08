@@ -5,7 +5,7 @@ import { orderRouter } from './modules/orders/order.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { merchantRouter } from './modules/merchants/merchant.routes.js';
 import { catalogRouter } from './modules/catalog/catalog.routes.js';
-import { paymentRouter } from './modules/payments/payment.routes.js';
+import { paymentRouter, stripeWebhookHandler } from './modules/payments/payment.routes.js';
 import { finalRouter } from './modules/final-routes/routes.js';
 import { pool } from './db/pool.js';
 import { env } from './config/env.js';
@@ -25,6 +25,8 @@ app.use(cors({
     return callback(null, allowedOrigins.includes(origin));
   },
 }));
+// Stripe signs the exact raw bytes, so this route must be registered before express.json().
+app.post('/api/payments/webhook/stripe', express.raw({ type: 'application/json', limit: '1mb' }), stripeWebhookHandler);
 app.use(express.json());
 
 // Liveness: confirms the HTTP process is running; it does not imply database readiness.

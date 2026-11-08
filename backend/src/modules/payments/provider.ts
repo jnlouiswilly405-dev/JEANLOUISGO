@@ -1,13 +1,15 @@
 import type { PaymentProvider } from './payment.types.js';
+import { createStripeSandboxProvider, readStripeSandboxConfig, type StripePaymentProvider } from './stripe-provider.js';
 
 export interface PaymentIntentResult {
   provider: PaymentProvider;
   providerReference: string;
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  clientSecret?: string;
 }
 
 export interface PaymentProviderAdapter {
-  createPayment(input: { paymentId: string; amountCents: number; currency: string; orderId: string }): Promise<PaymentIntentResult>;
+  createPayment(input: { paymentId: string; amountCents: number; currency: string; orderId: string; idempotencyKey?: string }): Promise<PaymentIntentResult>;
   verifyWebhook(rawBody: string, signature: string): boolean;
 }
 
@@ -26,12 +28,18 @@ export function assertPaymentProviderAllowed(provider: PaymentProvider, nodeEnv 
 }
 
 /**
- * Live providers are deliberately unavailable until their official SDK,
- * raw-body signature verification, API calls, and reconciliation are implemented.
- * A generic HMAC check is not a substitute for Stripe's signed webhook protocol.
+ * Stripe is available only in sandbox mode: it requires a Stripe TEST secret key plus a webhook
+ * secret. Without them (the default) it stays disabled; live keys are rejected outright.
+ * Real-money processing, Connect transfers and payouts are not implemented.
  */
 export function getProvider(provider: PaymentProvider): PaymentProviderAdapter {
   assertPaymentProviderAllowed(provider);
   if (provider === 'mock') return new MockPaymentProvider();
-  throw new Error('PAYMENT_PROVIDER_NOT_IMPLEMENTED: live payment processing is disabled');
+  return getStripeProvider();
+}
+
+export function getStripeProvider(): StripePaymentProvider {
+  const config = readStripeSandboxConfig();
+  if (!config) throw new Error('PAYMENT_PROVIDER_NOT_IMPLEMENTED: live payment processing is disabled');
+  return createStripeSandboxProvider(config);
 }

@@ -128,14 +128,14 @@ describe('live payment safety', () => {
     expect(await count("SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1", [orderId])).toBe(0);
   });
 
-  it('rejects stripe webhooks and records no event', async () => {
+  it('rejects stripe webhooks while stripe is disabled and records no event', async () => {
     const pool = await getPool();
     const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, totalCents: 600 });
     const eventId = `evt_${randomUUID()}`;
     const res = await api(base, 'POST', '/api/payments/webhook/stripe', {
       body: { eventId, type: 'PAYMENT_SUCCEEDED', paymentId: randomUUID(), status: 'SUCCEEDED', amountCents: 600, currency: 'USD', providerReference: 'x', rawBody: '{}', signature: 'sig' },
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(503);
     expect(await count('SELECT count(*)::int n FROM payment_events WHERE event_id=$1', [eventId])).toBe(0);
     expect(await orderStatus(pool, orderId)).toBe('PENDING_PAYMENT');
   });
