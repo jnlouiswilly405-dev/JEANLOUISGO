@@ -1,7 +1,8 @@
 # Frontend Recovery Inventory and Reconstruction Plan
 
-**Status: the original frontend source is NOT recovered.** This document is a plan only. No frontend code was generated.
-Search results are in `FRONTEND_SOURCE_STATUS.md`. Rebuilding requires separate owner approval.
+**Status: the original frontend source is NOT recovered.** Sections 1–5 are the original plan (written before approval).
+A reconstruction was subsequently approved and built; its actual status is in section 6.
+Search results are in `FRONTEND_SOURCE_STATUS.md`.
 
 ## 1. Inventory (what exists)
 
@@ -62,3 +63,20 @@ Rules for every phase: new files only under `apps/<role>/` and a shared package;
 | 5 | Admin app: financial summary, health, blocked outbox, unreferenced payments (read-only) | ADMIN-only enforced server-side (already covered by integration tests) |
 
 Safety: no UI calls refund, payout or settlement-creation; there are none to call. Frontends never hold secret keys. If the original archive appears, it replaces this plan and is diffed against any reconstruction.
+
+## 6. Reconstruction status (branch `recovery/v45-frontend-reconstruction`; RECONSTRUCTED, not recovered)
+
+Stack (owner-approved): React 19, Vite, TypeScript, Vitest + Testing Library; separate apps sharing `packages/api-client` (zod-validated typed client) and `packages/app-shell` (session, role gate, login). No backend endpoint was invented and no schema changed; `backend/integration/api-client-contract.int.ts` runs the real client against the real backend on PostgreSQL 16.
+
+| Module | Scope built | Not built |
+|---|---|---|
+| `packages/api-client` | auth, merchants, catalog, orders, payments (create), tracking, driver location/delivery, notifications, admin reads | refunds, settlements, earnings, payouts (deliberately absent; a unit test asserts this) |
+| `packages/app-shell` | in-memory token mirrored to sessionStorage, cleared on logout/401, wrong-role rejection | refresh tokens (backend has none) |
+| Customer | browse, cart, order, list, detail with polling and driver location, Stripe Payment Element (sandbox) | chat, notifications, reviews, promos UI |
+| Merchant | order list with only the valid next status, menu/restaurant management for owned restaurants | read-only settlements view |
+| Driver | active/history, delivery progression, opt-in throttled location sharing | read-only earnings view; the driver learns its profile id only from an assigned order (no profile endpoint) |
+| Admin | health, financial summary (read-only), blocked outbox (paginated, filtered), unreferenced payments | any write action |
+
+Payment safety: `PaymentStep` accepts only `VITE_STRIPE_PUBLISHABLE_KEY` values starting with `pk_test_` and renders no form otherwise. It never sets an order to PAID; PAID comes only from the backend's verified webhook, and the UI just waits and re-reads the order. Stripe.js is loaded from Stripe at runtime. Built bundles were scanned and contain no `sk_`, `whsec_` or `pk_live` strings.
+
+Open decisions: UI language and visual design (owner), hosting and CORS origins, and whether to add the unbuilt read-only views. Byte-exact archive verification remains INCOMPLETE.

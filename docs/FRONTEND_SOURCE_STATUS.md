@@ -1,18 +1,20 @@
 # Frontend Source Status
 
-**The customer, driver, merchant and admin frontend source files are MISSING from this recovery.**
+**The ORIGINAL customer, driver, merchant and admin frontend source files are STILL MISSING. They have NOT been recovered.**
 
-| App | Path | Contents | Missing |
+Since the owner's approval, new apps have been **reconstructed** (new code, written against the existing backend API contracts) on branch `recovery/v45-frontend-reconstruction`. They are not the original source, their design and UI language are unverified against the original, and no original file list is known.
+
+| App | Path | Original source | Reconstruction (branch `recovery/v45-frontend-reconstruction`) |
 |---|---|---|---|
-| Customer | `apps/customer/` | `README.md` placeholder only | all source, `package.json`, build and test setup |
-| Driver | `apps/driver/` | `README.md` placeholder only | all source, `package.json`, build and test setup |
-| Merchant | `apps/merchant/` | `README.md` placeholder only | all source, `package.json`, build and test setup |
-| Admin | `apps/admin/` | `README.md` placeholder only | all source, `package.json`, build and test setup |
+| Customer | `apps/customer/` | missing | React 19 + Vite + TS: browse, cart, order, order tracking, sandbox card payment (`pk_test_` only) |
+| Driver | `apps/driver/` | missing | active deliveries, delivery progression, opt-in location sharing |
+| Merchant | `apps/merchant/` | missing | order status actions, menu and restaurant management |
+| Admin | `apps/admin/` | missing | read-only: health, financial summary, blocked outbox, unreferenced payments |
+| Shared | `packages/api-client`, `packages/app-shell` | n/a | typed client and session/role gate |
 
-- The placeholders say only: "Frontend shell … Connect this app to the shared MULTIGO API under /api."
+- The original placeholders said only: "Frontend shell … Connect this app to the shared MULTIGO API under /api."
 - The 87-file V45 export used for the restoration contained no frontend source, so none was lost during restoration.
-- Not part of the root npm workspaces build and not covered by CI.
-- No replacement applications have been generated. Restoring them requires the original frontend archive, or a separately approved rebuild against the existing `/api` backend.
+- Reconstruction details, scope and gaps: `FRONTEND_RECOVERY_PLAN.md` (section 6).
 
 ## Search for the original source (performed)
 

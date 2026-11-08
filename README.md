@@ -43,7 +43,15 @@ Voir `.env.example` pour les variables d'environnement.
 
 ## Frontends
 
-`apps/customer`, `apps/driver`, `apps/merchant` et `apps/admin` ne contiennent que des README de substitution : **les sources frontend sont manquantes**.
+Les sources frontend **d'origine sont toujours manquantes** (non récupérées). Sur la branche `recovery/v45-frontend-reconstruction`, les applications ont été **reconstruites** (nouveau code, pas l'original) avec React 19, Vite et TypeScript, à partir des contrats API du backend :
+
+- `apps/customer` : catalogue, panier, commande, suivi, paiement par carte **sandbox uniquement** (clé `VITE_STRIPE_PUBLISHABLE_KEY` de type `pk_test_` ; toute autre clé est refusée).
+- `apps/merchant` : commandes (transitions autorisées uniquement), menu et restaurants.
+- `apps/driver` : livraisons, progression, partage de position optionnel.
+- `apps/admin` : console en **lecture seule** (santé, synthèse financière, événements outbox bloqués, paiements sans référence).
+- `packages/api-client`, `packages/app-shell` : client typé et session partagés.
+
+Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|admin>-app` (proxy `/api` vers `VITE_DEV_API_TARGET`, défaut `http://localhost:4000`). Non construits : chat, notifications, avis, promotions, vues gains/règlements. Détails : `docs/FRONTEND_RECOVERY_PLAN.md` (section 6).
 
 ## Sécurité — paiements
 
@@ -55,7 +63,7 @@ Voir `.env.example` pour les variables d'environnement.
 
 1. Politique financière des règlements/versements non décidée.
 2. Stripe : sandbox uniquement ; pas de paiements réels, de remboursements applicatifs, de Connect ni de versements.
-3. Sources frontend manquantes.
+3. Sources frontend d'origine manquantes (une reconstruction existe sur `recovery/v45-frontend-reconstruction`, non fusionnée ; design et langue à décider).
 4. Vérification octet par octet de la restauration impossible : l'archive ZIP d'origine ou l'export texte original est nécessaire. Cette vérification n'est **pas** terminée.
 5. Avertissement du script d'installation d'esbuild non traité (aucun changement `allowScripts`).
 
