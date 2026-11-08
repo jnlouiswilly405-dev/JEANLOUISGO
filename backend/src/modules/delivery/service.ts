@@ -44,7 +44,7 @@ export async function advanceDelivery(
        (order_id, driver_id, event_type, metadata)
        VALUES ($1,$2,$3,$4)
        RETURNING *`,
-      [orderId, driverId, action, JSON.stringify(metadata)],
+      [orderId, driverProfileId, action, JSON.stringify(metadata)],
     );
 
     if (action === "DELIVERED") {

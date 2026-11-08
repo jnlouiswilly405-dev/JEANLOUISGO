@@ -23,15 +23,9 @@ afterAll(async () => {
   await close?.();
 });
 
-/**
- * advanceDelivery() writes the driver's USER id into delivery_events.driver_id, which references
- * driver_profiles(id). Real drivers (profile id != user id) therefore hit a foreign-key violation;
- * see the KNOWN DEFECT test below. Fixtures here use profile id == user id so the rest of the
- * delivery -> outbox behaviour can still be verified.
- */
-async function pickedUpOrder(opts: { distinctProfileId?: boolean } = {}) {
+async function pickedUpOrder() {
   const driver = await createUser(pool, 'DRIVER');
-  const profileId = await createDriverProfile(pool, driver.id, 'BUSY', opts.distinctProfileId ? undefined : driver.id);
+  const profileId = await createDriverProfile(pool, driver.id, 'BUSY');
   const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'PICKED_UP', driverProfileId: profileId });
   createdOrders.push(orderId);
   await pool.query("INSERT INTO dispatch_assignments (order_id,driver_id,status) VALUES ($1,$2,'ACCEPTED')", [orderId, profileId]);
@@ -90,12 +84,14 @@ describe('delivery state machine', () => {
   });
 });
 
-describe('known defects (documented, not fixed: source changes are out of scope)', () => {
-  // it.fails passes while the defect exists and turns red once the source is fixed, prompting removal of the marker.
-  it.fails('KNOWN DEFECT: a driver whose profile id differs from the user id cannot advance a delivery (delivery_events FK)', async () => {
-    const { driver, orderId } = await pickedUpOrder({ distinctProfileId: true });
+describe('delivery events regression', () => {
+  it('records the driver profile id (not the user id) when profile and user ids differ', async () => {
+    const { driver, profileId, orderId } = await pickedUpOrder();
+    expect(profileId).not.toBe(driver.id);
     const res = await advanceDelivery(pool, orderId, driver.id, 'PICKED_UP');
     expect(res.orderStatus).toBe('IN_TRANSIT');
+    const ev = (await pool.query('SELECT driver_id,event_type FROM delivery_events WHERE order_id=$1', [orderId])).rows;
+    expect(ev).toEqual([{ driver_id: profileId, event_type: 'PICKED_UP' }]);
   });
 });
 

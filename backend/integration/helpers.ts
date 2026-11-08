@@ -73,11 +73,8 @@ export async function createProduct(pool: Pool, merchantId: string, priceCents: 
   return r.rows[0].id;
 }
 
-export async function createDriverProfile(pool: Pool, userId: string, status = 'AVAILABLE', profileId?: string): Promise<string> {
-  const r = await pool.query(
-    'INSERT INTO driver_profiles (id,user_id,status) VALUES (COALESCE($3::uuid, gen_random_uuid()),$1,$2) RETURNING id',
-    [userId, status, profileId ?? null],
-  );
+export async function createDriverProfile(pool: Pool, userId: string, status = 'AVAILABLE'): Promise<string> {
+  const r = await pool.query('INSERT INTO driver_profiles (user_id,status) VALUES ($1,$2) RETURNING id', [userId, status]);
   return r.rows[0].id;
 }
 
