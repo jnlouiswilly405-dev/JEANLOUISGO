@@ -1,8 +1,15 @@
-# Stripe Implementation Plan (PLAN ONLY — NOT IMPLEMENTED, NOT APPROVED)
+# Stripe Implementation Plan (sandbox phases implemented; live NOT approved)
 
-Status: proposal for owner approval. Nothing here is implemented. Live payments, refunds, payouts and Stripe Connect transfers remain disabled. Settlement policy (`SETTLEMENT_FINANCIAL_POLICY_GATE.md`) is a separate, still-undecided gate and no step below may invent fees, commissions, tax, tip or driver-pay rules.
+Status: **test-mode sandbox implemented** for phases 1–4 and 6 (see "Implementation status"). Phases 5 (application refunds) and 7 (Connect payouts) are NOT implemented and remain disabled. Live payments are not approved. Settlement policy (`SETTLEMENT_FINANCIAL_POLICY_GATE.md`, `SETTLEMENT_POLICY_PROPOSAL.md`) is a separate, still-undecided gate and no step below may invent fees, commissions, tax, tip or driver-pay rules.
 
-## Current stub points
+## Implementation status
+- Done (sandbox, test keys only): `stripe` SDK dependency; `backend/src/modules/payments/stripe-provider.ts` (PaymentIntent creation with forwarded idempotency key, always `PENDING`; test-key-only guard that rejects `sk_live_`/`rk_live_`); raw-body signature-verified webhook `POST /api/payments/webhook/stripe` (`express.raw` mounted before `express.json`, payment fields taken from the verified event only); existing amount/currency/reference reconciliation and `(provider,event_id)` replay protection; unit tests (fake client, real signature helpers) and PostgreSQL integration tests.
+- Disabled by default: Stripe stays off unless `STRIPE_SECRET_KEY` (`sk_test_...`) and `STRIPE_WEBHOOK_SECRET` are both set. No Stripe keys are in CI.
+- Provider-level `createRefund` exists and is unit tested with a fake client, but the application refund path (`refundPayment`, `POST /api/payments/:id/refund`) still throws `REFUND_PROVIDER_NOT_IMPLEMENTED`; ledger and settlement reversal need the approved policy.
+- Not done: scheduled reconciliation job against Stripe, real sandbox end-to-end run with a Stripe test account and Stripe CLI, Connect, payouts, any live key.
+- Known caveat: the PaymentIntent is created inside the payment DB transaction (row locks held during the network call); acceptable for sandbox, to be revisited before live use.
+
+## Original stub points (before this work)
 
 - `backend/src/modules/payments/provider.ts`: `getProvider('stripe')` throws `PAYMENT_PROVIDER_NOT_IMPLEMENTED`; `MockPaymentProvider` is allowed only when `NODE_ENV` is `test` or `development`.
 - `backend/src/modules/payments/payment.routes.ts`: `POST /api/payments/webhook/:provider` reads `rawBody` and `signature` from the parsed JSON body, which cannot verify a Stripe signature.

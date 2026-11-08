@@ -47,18 +47,18 @@ Voir `.env.example` pour les variables d'environnement.
 
 ## Sécurité — paiements
 
-- Le fournisseur Stripe est un **stub**. Les paiements réels, remboursements et versements (payouts) restent **désactivés**.
+- Stripe fonctionne uniquement en **mode test (sandbox)** : désactivé par défaut, activé seulement avec `STRIPE_SECRET_KEY` (`sk_test_...`) et `STRIPE_WEBHOOK_SECRET` ; les clés live sont refusées. Webhook signé sur corps brut : `POST /api/payments/webhook/stripe`. Les paiements réels, remboursements applicatifs, Stripe Connect et versements (payouts) restent **désactivés**.
 - La politique financière des règlements n'est pas décidée (`docs/SETTLEMENT_FINANCIAL_POLICY_GATE.md`) ; la création réelle de règlements reste bloquée.
 - Ne pas déployer en production avant décision explicite.
 
 ## Points bloquants restants
 
 1. Politique financière des règlements/versements non décidée.
-2. Fournisseur de paiement Stripe non implémenté (stub) ; remboursements et versements désactivés.
+2. Stripe : sandbox uniquement ; pas de paiements réels, de remboursements applicatifs, de Connect ni de versements.
 3. Sources frontend manquantes.
 4. Vérification octet par octet de la restauration impossible : l'archive ZIP d'origine ou l'export texte original est nécessaire. Cette vérification n'est **pas** terminée.
 5. Avertissement du script d'installation d'esbuild non traité (aucun changement `allowScripts`).
 
 ## Documentation
 
-Voir `docs/` (audits, portes de validation des paiements, politique de règlement, rapports de validation V45). En particulier : `docs/STRIPE_IMPLEMENTATION_PLAN.md` (plan uniquement, non implémenté) et `docs/FRONTEND_SOURCE_STATUS.md` (sources frontend manquantes).
+Voir `docs/` (audits, portes de validation des paiements, politique de règlement, rapports de validation V45). En particulier : `docs/STRIPE_IMPLEMENTATION_PLAN.md` (état du sandbox et plan), `docs/SETTLEMENT_POLICY_PROPOSAL.md` (proposition de politique, non approuvée) et `docs/FRONTEND_SOURCE_STATUS.md` (sources frontend manquantes, résultats de recherche).
