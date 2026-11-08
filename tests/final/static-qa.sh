@@ -44,8 +44,9 @@ grep -q "p.amount_cents,o.currency" "$ROOT/backend/src/modules/payments/payment.
 grep -q 'order.rows\[0\].merchant_id !== merchantId' "$ROOT/backend/src/modules/settlements/service.ts"
 grep -q 'order.rows\[0\].driver_profile_id !== driverId' "$ROOT/backend/src/modules/settlements/service.ts"
 grep -q 'Number.isSafeInteger(amount)' "$ROOT/backend/src/modules/settlements/service.ts"
-grep -q "driver_earnings.status IN ('PENDING','ELIGIBLE')" "$ROOT/backend/src/modules/settlements/service.ts"
-grep -q "merchant_settlements.status IN ('PENDING','ELIGIBLE')" "$ROOT/backend/src/modules/settlements/service.ts"
+grep -q "SETTLEMENT_ALREADY_EXISTS" "$ROOT/backend/src/modules/settlements/service.ts"
+grep -q "PAYMENT_NOT_CAPTURED" "$ROOT/backend/src/modules/settlements/service.ts"
+! grep -q "DO UPDATE SET" "$ROOT/backend/src/modules/settlements/service.ts"
 
 # Settlement calculations use exact minor units and match the order's actual gross.
 grep -q 'gross_amount_cents' "$ROOT/database/migrations/014_settlement_minor_units.sql"

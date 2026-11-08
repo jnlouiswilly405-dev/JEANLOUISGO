@@ -47,10 +47,35 @@ export async function createSettlementForDeliveredOrder(
     if (order.rows[0].total_cents !== grossAmountCents) {
       throw new Error("SETTLEMENT_GROSS_DOES_NOT_MATCH_ORDER");
     }
+    // Nothing is settled for money that was not captured: require a SUCCEEDED payment covering the order total.
+    const captured = await client.query(
+      `SELECT 1 FROM payments WHERE order_id=$1 AND status='SUCCEEDED' AND amount_cents=$2 LIMIT 1`,
+      [orderId, grossAmountCents],
+    );
+    if (!captured.rowCount) throw new Error("PAYMENT_NOT_CAPTURED");
 
     const driverNetCents =
       grossAmountCents - driverPlatformFeeCents + bonusAmountCents;
     const merchantNetCents = grossAmountCents - merchantCommissionCents;
+
+    // Existing rows are never overwritten (the order row lock above serializes callers): an identical
+    // request returns the stored rows, a different one is rejected.
+    const existingDriver = await client.query(`SELECT * FROM driver_earnings WHERE order_id=$1`, [orderId]);
+    const existingMerchant = await client.query(`SELECT * FROM merchant_settlements WHERE order_id=$1`, [orderId]);
+    if (existingDriver.rowCount || existingMerchant.rowCount) {
+      const d = existingDriver.rows[0];
+      const m = existingMerchant.rows[0];
+      const n = (v: unknown) => Number(v);
+      const same = d && m
+        && d.driver_id === driverId && n(d.gross_amount_cents) === grossAmountCents
+        && n(d.platform_fee_cents) === driverPlatformFeeCents && n(d.bonus_amount_cents) === bonusAmountCents
+        && n(d.net_amount_cents) === driverNetCents
+        && m.merchant_id === merchantId && n(m.gross_amount_cents) === grossAmountCents
+        && n(m.commission_amount_cents) === merchantCommissionCents && n(m.net_amount_cents) === merchantNetCents;
+      if (!same) throw new Error("SETTLEMENT_ALREADY_EXISTS");
+      await client.query("COMMIT");
+      return { driverEarning: d, merchantSettlement: m };
+    }
 
     const driver = await client.query(
       `INSERT INTO driver_earnings
@@ -58,25 +83,12 @@ export async function createSettlementForDeliveredOrder(
         gross_amount_cents, platform_fee_cents, bonus_amount_cents, net_amount_cents,
         currency, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'ELIGIBLE')
-       ON CONFLICT (order_id)
-       DO UPDATE SET
-         gross_amount=EXCLUDED.gross_amount,
-         platform_fee=EXCLUDED.platform_fee,
-         bonus_amount=EXCLUDED.bonus_amount,
-         net_amount=EXCLUDED.net_amount,
-         gross_amount_cents=EXCLUDED.gross_amount_cents,
-         platform_fee_cents=EXCLUDED.platform_fee_cents,
-         bonus_amount_cents=EXCLUDED.bonus_amount_cents,
-         net_amount_cents=EXCLUDED.net_amount_cents,
-         currency=EXCLUDED.currency
-       WHERE driver_earnings.status IN ('PENDING','ELIGIBLE')
        RETURNING *`,
       [driverId, orderId, grossAmountCents / 100,
        driverPlatformFeeCents / 100, bonusAmountCents / 100,
        driverNetCents / 100, grossAmountCents, driverPlatformFeeCents,
        bonusAmountCents, driverNetCents, order.rows[0].currency],
     );
-    if (!driver.rowCount) throw new Error("DRIVER_SETTLEMENT_ALREADY_FINAL");
 
     const merchant = await client.query(
       `INSERT INTO merchant_settlements
@@ -84,23 +96,12 @@ export async function createSettlementForDeliveredOrder(
         gross_amount_cents, commission_amount_cents, net_amount_cents,
         currency, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'ELIGIBLE')
-       ON CONFLICT (order_id)
-       DO UPDATE SET
-         gross_amount=EXCLUDED.gross_amount,
-         commission_amount=EXCLUDED.commission_amount,
-         net_amount=EXCLUDED.net_amount,
-         gross_amount_cents=EXCLUDED.gross_amount_cents,
-         commission_amount_cents=EXCLUDED.commission_amount_cents,
-         net_amount_cents=EXCLUDED.net_amount_cents,
-         currency=EXCLUDED.currency
-       WHERE merchant_settlements.status IN ('PENDING','ELIGIBLE')
        RETURNING *`,
       [merchantId, orderId, grossAmountCents / 100,
        merchantCommissionCents / 100, merchantNetCents / 100,
        grossAmountCents, merchantCommissionCents, merchantNetCents,
        order.rows[0].currency],
     );
-    if (!merchant.rowCount) throw new Error("MERCHANT_SETTLEMENT_ALREADY_FINAL");
 
     await client.query("COMMIT");
     return { driverEarning: driver.rows[0], merchantSettlement: merchant.rows[0] };
