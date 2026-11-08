@@ -126,3 +126,83 @@ export async function releasePromoForOrder(client: PoolClient, orderId: string):
     await client.query(`UPDATE promo_codes SET used_count=GREATEST(used_count-1,0) WHERE id=$1`, [released.rows[0].promo_id]);
   }
 }
+
+export interface PromoInput {
+  code: string;
+  discountType: "PERCENT" | "FIXED";
+  percent?: number;
+  amountCents?: number;
+  maxDiscountCents?: number | null;
+  minOrderTotalCents?: number;
+  usageLimit?: number | null;
+  startsAt?: string;
+  expiresAt?: string | null;
+}
+
+const centsToMajor = (c: number) => (c / 100).toFixed(2);
+
+function mapPromo(r: any) {
+  const percent = r.discount_type === "PERCENT";
+  return {
+    id: r.id,
+    code: r.code,
+    discountType: r.discount_type,
+    ...(percent ? { percent: Number(r.discount_value) } : { amountCents: Math.round(Number(r.discount_value) * 100) }),
+    maxDiscountCents: r.max_discount == null ? null : Math.round(Number(r.max_discount) * 100),
+    minOrderTotalCents: Math.round(Number(r.min_order_total) * 100),
+    usageLimit: r.usage_limit,
+    usedCount: r.used_count,
+    startsAt: new Date(r.starts_at).toISOString(),
+    expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+    active: r.active,
+  };
+}
+
+/**
+ * Admin-only creation. Amounts are accepted in cents and stored as NUMERIC major units (the existing column format).
+ * Promotions are platform-funded by default; nothing here touches settlement, earnings or payouts.
+ */
+export async function createPromo(pool: Pool, actorId: string, input: PromoInput) {
+  const value = input.discountType === "PERCENT" ? input.percent : input.amountCents === undefined ? undefined : input.amountCents / 100;
+  if (value === undefined || value <= 0) throw new Error("PROMO_VALUE_REQUIRED");
+  if (input.discountType === "PERCENT" && value > 100) throw new Error("PROMO_VALUE_INVALID");
+  if (input.startsAt && input.expiresAt && new Date(input.expiresAt) <= new Date(input.startsAt)) throw new Error("PROMO_DATES_INVALID");
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO promo_codes (code,discount_type,discount_value,max_discount,min_order_total,usage_limit,starts_at,expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7::timestamptz, now()),$8::timestamptz) RETURNING *`,
+      [
+        input.code.trim().toUpperCase(), input.discountType, value.toFixed(2),
+        input.maxDiscountCents == null ? null : centsToMajor(input.maxDiscountCents),
+        centsToMajor(input.minOrderTotalCents ?? 0), input.usageLimit ?? null,
+        input.startsAt ?? null, input.expiresAt ?? null,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO audit_events (actor_user_id, action, entity_type, entity_id, metadata) VALUES ($1,'PROMO_CREATED','PROMO',$2,$3)`,
+      [actorId, rows[0].id, JSON.stringify({ code: rows[0].code })],
+    );
+    return mapPromo(rows[0]);
+  } catch (e) {
+    if ((e as { code?: string }).code === "23505") throw new Error("PROMO_CODE_EXISTS");
+    throw e;
+  }
+}
+
+export async function listPromos(pool: Pool, q: { limit: number; offset: number }) {
+  const { rows } = await pool.query(
+    `SELECT * FROM promo_codes ORDER BY starts_at DESC, code ASC LIMIT $1 OFFSET $2`, [q.limit, q.offset],
+  );
+  const total = await pool.query(`SELECT count(*)::int AS n FROM promo_codes`);
+  return { items: rows.map(mapPromo), total: total.rows[0].n as number, limit: q.limit, offset: q.offset };
+}
+
+export async function setPromoActive(pool: Pool, actorId: string, id: string, active: boolean) {
+  const { rows } = await pool.query(`UPDATE promo_codes SET active=$2 WHERE id=$1 RETURNING *`, [id, active]);
+  if (!rows[0]) throw new Error("PROMO_NOT_FOUND");
+  await pool.query(
+    `INSERT INTO audit_events (actor_user_id, action, entity_type, entity_id, metadata) VALUES ($1,$2,'PROMO',$3,$4)`,
+    [actorId, active ? "PROMO_ACTIVATED" : "PROMO_DEACTIVATED", id, JSON.stringify({ code: rows[0].code })],
+  );
+  return mapPromo(rows[0]);
+}

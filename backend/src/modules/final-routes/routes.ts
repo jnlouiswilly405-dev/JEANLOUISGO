@@ -5,8 +5,8 @@ import { recordDriverLocation, getOrderTracking } from '../tracking/service.js';
 import { advanceDelivery } from '../delivery/service.js';
 import { createNotification, listNotifications, markNotificationRead } from '../notifications/service.js';
 import { sendMessage, listMessages, getOrCreateOrderThread, listThreadsForUser } from '../chat/service.js';
-import { createReview } from '../reviews/service.js';
-import { validatePromo } from '../promos/service.js';
+import { createReview, listMerchantReviewsPage } from '../reviews/service.js';
+import { validatePromo, createPromo, listPromos, setPromoActive } from '../promos/service.js';
 import { listEligibleDriverEarnings, listEligibleMerchantSettlements } from '../settlements/service.js';
 import { getAdminOrderFinancialSummary, getSystemHealth, listBlockedOutboxEvents, listUnreferencedStripePayments } from '../admin/service.js';
 import { pool } from '../../db/pool.js';
@@ -118,4 +118,41 @@ finalRouter.get('/admin/payments/unreferenced', requireAuth, requireRole('ADMIN'
   const q=z.object({olderThanMinutes:z.coerce.number().int().min(0).max(10080).default(15),limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0)}).safeParse(req.query);
   if(!q.success)return res.status(400).json({error:q.error.issues});
   try { res.json(await listUnreferencedStripePayments(requireDb(), q.data)); } catch(e){res.status(503).json({error:'Payment report unavailable'});}
+});
+
+finalRouter.get('/merchants/:merchantId/reviews', requireAuth, async (req,res)=>{
+  const id=z.string().uuid().safeParse(req.params.merchantId);
+  const q=z.object({limit:z.coerce.number().int().min(1).max(50).default(20),offset:z.coerce.number().int().min(0).default(0)}).safeParse(req.query);
+  if(!id.success||!q.success)return res.status(400).json({error:'Invalid request'});
+  try { res.json(await listMerchantReviewsPage(requireDb(), id.data, q.data)); } catch(e){res.status(503).json({error:'Reviews unavailable'});}
+});
+
+const promoBody=z.object({
+  code:z.string().trim().regex(/^[A-Za-z0-9_-]{3,32}$/),
+  discountType:z.enum(['PERCENT','FIXED']),
+  percent:z.number().positive().max(100).optional(),
+  amountCents:z.number().int().positive().max(100000000).optional(),
+  maxDiscountCents:z.number().int().positive().max(100000000).nullable().optional(),
+  minOrderTotalCents:z.number().int().nonnegative().max(100000000).optional(),
+  usageLimit:z.number().int().positive().max(1000000).nullable().optional(),
+  startsAt:z.string().datetime().optional(),
+  expiresAt:z.string().datetime().nullable().optional(),
+}).strict();
+finalRouter.get('/admin/promos', requireAuth, requireRole('ADMIN'), async (req,res)=>{
+  const q=z.object({limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0)}).safeParse(req.query);
+  if(!q.success)return res.status(400).json({error:q.error.issues});
+  try { res.json(await listPromos(requireDb(), q.data)); } catch(e){res.status(503).json({error:'Promotions unavailable'});}
+});
+finalRouter.post('/admin/promos', requireAuth, requireRole('ADMIN'), async (req,res)=>{
+  const b=promoBody.safeParse(req.body);
+  if(!b.success)return res.status(400).json({error:b.error.issues});
+  try { res.status(201).json(await createPromo(requireDb(), req.user!.id, b.data)); }
+  catch(e){const m=e instanceof Error?e.message:'Promo failed';res.status(m==='PROMO_CODE_EXISTS'?409:m.startsWith('PROMO_')?400:503).json({error:m.startsWith('PROMO_')?m:'Promotions unavailable'});}
+});
+finalRouter.post('/admin/promos/:id/active', requireAuth, requireRole('ADMIN'), async (req,res)=>{
+  const id=z.string().uuid().safeParse(req.params.id);
+  const b=z.object({active:z.boolean()}).strict().safeParse(req.body);
+  if(!id.success||!b.success)return res.status(400).json({error:'Invalid request'});
+  try { res.json(await setPromoActive(requireDb(), req.user!.id, id.data, b.data.active)); }
+  catch(e){const m=e instanceof Error?e.message:'';res.status(m==='PROMO_NOT_FOUND'?404:503).json({error:m==='PROMO_NOT_FOUND'?m:'Promotions unavailable'});}
 });

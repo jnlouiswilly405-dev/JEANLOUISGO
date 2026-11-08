@@ -57,3 +57,21 @@ export async function listMerchantReviews(pool: Pool, merchantId: string) {
   );
   return rows;
 }
+
+/** Public-facing view: rating, text and date only. Reviewer and subject identities are never returned. */
+export async function listMerchantReviewsPage(pool: Pool, merchantId: string, q: { limit: number; offset: number }) {
+  const [items, agg] = await Promise.all([
+    pool.query(
+      `SELECT id, rating, body, created_at FROM reviews WHERE merchant_id=$1 ORDER BY created_at DESC, id LIMIT $2 OFFSET $3`,
+      [merchantId, q.limit, q.offset],
+    ),
+    pool.query(`SELECT count(*)::int AS n, avg(rating)::float AS avg FROM reviews WHERE merchant_id=$1`, [merchantId]),
+  ]);
+  return {
+    average: agg.rows[0].avg === null ? null : Math.round(agg.rows[0].avg * 10) / 10,
+    count: agg.rows[0].n as number,
+    limit: q.limit,
+    offset: q.offset,
+    items: items.rows.map((r) => ({ id: r.id, rating: r.rating, body: r.body, createdAt: new Date(r.created_at).toISOString() })),
+  };
+}
