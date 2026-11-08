@@ -63,6 +63,11 @@ jobs:
           npm test --workspace @multigo/api-client
           npm run lint --workspace @multigo/app-shell
           npm test --workspace @multigo/app-shell
+      - name: Customer app lint, tests and build
+        run: |
+          npm run lint --workspace @multigo/customer-app
+          npm test --workspace @multigo/customer-app
+          npm run build --workspace @multigo/customer-app
       - name: Backend PostgreSQL integration tests
         env:
           DATABASE_URL: postgres://multigo:multigo_test@localhost:5432/multigo_test

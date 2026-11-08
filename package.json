@@ -4,7 +4,8 @@
   "version": "1.1.1",
   "workspaces": [
     "backend",
-    "packages/*"
+    "packages/*",
+    "apps/customer"
   ],
   "scripts": {
     "dev": "npm run dev --workspace backend",
