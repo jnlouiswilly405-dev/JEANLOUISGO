@@ -61,4 +61,4 @@ Voir `.env.example` pour les variables d'environnement.
 
 ## Documentation
 
-Voir `docs/` (audits, portes de validation des paiements, politique de règlement, rapports de validation V45).
+Voir `docs/` (audits, portes de validation des paiements, politique de règlement, rapports de validation V45). En particulier : `docs/STRIPE_IMPLEMENTATION_PLAN.md` (plan uniquement, non implémenté) et `docs/FRONTEND_SOURCE_STATUS.md` (sources frontend manquantes).
