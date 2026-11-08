@@ -1,0 +1,23 @@
+JEANLOUISGO V45 SOURCE RESTORE — VALIDATION NOTE
+
+Source package: JEANLOUISGO_V45_AUDITED_NEXT_STEP_FIXED.zip
+
+Verified in this workspace:
+- ZIP extraction and file integrity: PASS
+- Backend TypeScript source files: 37
+- SQL migrations present: 006 through 017 (12 files)
+- Static QA: PASS (STATIC_QA_PASS), after setting database/migrate.sh executable
+- database/migrate.sh shell syntax: PASS
+- tests/final/static-qa.sh shell syntax: PASS
+- PostgreSQL GitHub Actions workflow present: PASS
+
+Not verified:
+- npm install timed out after 120 seconds; no node_modules or lockfile was produced
+- TypeScript build and Vitest were not run
+- PostgreSQL migrations/integration were not run locally
+- Remote push and GitHub Actions run are not confirmed
+- Customer, driver, merchant, and admin frontends remain README placeholders
+- Stripe adapter remains a stub; do not enable live payments
+
+Safe publication:
+Run RESTORE_TO_GITHUB.sh from the extracted package on a computer with Git and authorized GitHub write access. It creates recovery/v45-source-restore from recovery-v45-api-perimeter, adds missing files only, and does not modify main or the existing V45 branch.

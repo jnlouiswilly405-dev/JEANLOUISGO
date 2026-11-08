@@ -1,0 +1,121 @@
+import { randomUUID } from 'node:crypto';
+import { pool } from '../../db/pool.js';
+import type { PaymentProvider } from './payment.types.js';
+import { getProvider } from './provider.js';
+
+export async function createPayment(input: { orderId: string; provider: PaymentProvider; amountCents: number; idempotencyKey: string }) {
+  if (!pool) throw new Error('DATABASE_URL is not configured');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Serialize requests sharing an idempotency key, including the first insert.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [input.idempotencyKey]);
+    const existing = await client.query<{id:string;order_id:string;provider:string;amount_cents:number;status:string}>('SELECT id,order_id,provider,amount_cents,status FROM payments WHERE idempotency_key=$1 FOR UPDATE', [input.idempotencyKey]);
+    if (existing.rowCount) {
+      const prior = existing.rows[0];
+      if (prior.order_id !== input.orderId || prior.provider !== input.provider || prior.amount_cents !== input.amountCents) {
+        throw new Error('Idempotency key was already used for a different payment request');
+      }
+      await client.query('COMMIT');
+      return prior;
+    }
+    const order = await client.query<{ total_cents: number; status: string; currency: string }>('SELECT total_cents,status,currency FROM orders WHERE id=$1 FOR UPDATE', [input.orderId]);
+    if (!order.rowCount) throw new Error('Order not found');
+    if (order.rows[0].status !== 'PENDING_PAYMENT') throw new Error('Order is not payable');
+    if (order.rows[0].total_cents !== input.amountCents) throw new Error('Payment amount does not match order total');
+    // The order row lock serializes distinct idempotency keys for this order.
+    // Do not create a second live processor attempt while one is already pending.
+    const activePayment = await client.query<{ id: string; status: string }>(
+      "SELECT id,status FROM payments WHERE order_id=$1 AND status IN ('PENDING','SUCCEEDED') ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+      [input.orderId]
+    );
+    validateNoActivePayment(activePayment.rowCount ? activePayment.rows[0].status : null);
+    const paymentId = randomUUID();
+    const providerResult = await getProvider(input.provider).createPayment({ paymentId, amountCents: input.amountCents, currency: order.rows[0].currency, orderId: input.orderId });
+    const payment = await client.query(
+      `INSERT INTO payments(id,order_id,provider,provider_reference,amount_cents,status,idempotency_key)
+       VALUES($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id,order_id,provider,provider_reference,amount_cents,status,created_at`,
+      [paymentId,input.orderId,input.provider,providerResult.providerReference,input.amountCents,providerResult.status,input.idempotencyKey]
+    );
+    if (providerResult.status === 'SUCCEEDED') {
+      await client.query("UPDATE orders SET status='PAID' WHERE id=$1", [input.orderId]);
+      await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) VALUES($1,'PLATFORM_CLEARING',NULL,'CREDIT',$2,$3)`, [input.orderId,input.amountCents,order.rows[0].currency]);
+    }
+    await client.query('COMMIT');
+    return payment.rows[0];
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
+}
+
+export function validateNoActivePayment(existingStatus: string | null): void {
+  if (existingStatus === 'PENDING' || existingStatus === 'SUCCEEDED') {
+    throw new Error('PAYMENT_ATTEMPT_ALREADY_ACTIVE: reuse the original idempotency key for this order');
+  }
+}
+
+export function validatePaymentWebhookEvent(type: string, status: 'SUCCEEDED'|'FAILED'): void {
+  const expectedStatus = type === 'PAYMENT_SUCCEEDED' ? 'SUCCEEDED'
+    : type === 'PAYMENT_FAILED' ? 'FAILED' : null;
+  if (!expectedStatus || expectedStatus !== status) {
+    throw new Error('WEBHOOK_EVENT_STATUS_MISMATCH: unsupported event type or inconsistent status');
+  }
+}
+
+export function validatePaymentOrderState(status: string): void {
+  if (status !== 'PENDING_PAYMENT' && status !== 'PAID') {
+    throw new Error('WEBHOOK_ORDER_STATE_BLOCKED: payment cannot be finalized for this order state');
+  }
+}
+
+export function validatePaymentWebhookDetails(input: { amountCents: number; currency: string; providerReference: string }, expected: { amountCents: number; currency: string; providerReference: string }): void {
+  if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
+    throw new Error('WEBHOOK_AMOUNT_INVALID');
+  }
+  const currency = input.currency.trim().toUpperCase();
+  const expectedCurrency = expected.currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency) || currency !== expectedCurrency) {
+    throw new Error('WEBHOOK_CURRENCY_MISMATCH');
+  }
+  if (input.amountCents !== expected.amountCents) {
+    throw new Error('WEBHOOK_AMOUNT_MISMATCH');
+  }
+  if (!input.providerReference || input.providerReference !== expected.providerReference) {
+    throw new Error('WEBHOOK_PROVIDER_REFERENCE_MISMATCH');
+  }
+}
+
+export async function handleWebhook(input: { provider: PaymentProvider; eventId: string; type: string; paymentId: string; status: 'SUCCEEDED'|'FAILED'; amountCents: number; currency: string; providerReference: string; rawBody: string; signature: string }) {
+  if (!pool) throw new Error('DATABASE_URL is not configured');
+  validatePaymentWebhookEvent(input.type, input.status);
+  if (!getProvider(input.provider).verifyWebhook(input.rawBody, input.signature)) throw new Error('Invalid webhook signature');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const inserted = await client.query(`INSERT INTO payment_events(event_id,provider,event_type,payment_id,payload) VALUES($1,$2,$3,$4,$5::jsonb) ON CONFLICT(provider,event_id) DO NOTHING RETURNING event_id`, [input.eventId,input.provider,input.type,input.paymentId,input.rawBody]);
+    if (!inserted.rowCount) { await client.query('COMMIT'); return { duplicate: true }; }
+    const payment = await client.query<{ order_id:string; amount_cents:number; status:string; currency:string; provider_reference:string; order_status:string }>('SELECT p.order_id,p.amount_cents,p.status,o.currency,p.provider_reference,o.status AS order_status FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND p.provider=$2 FOR UPDATE OF p,o',[input.paymentId,input.provider]);
+    if (!payment.rowCount) throw new Error('Payment not found');
+    validatePaymentWebhookDetails(input, { amountCents: payment.rows[0].amount_cents, currency: payment.rows[0].currency, providerReference: payment.rows[0].provider_reference });
+    if (input.status === 'SUCCEEDED') validatePaymentOrderState(payment.rows[0].order_status);
+    if (input.status === 'SUCCEEDED' && payment.rows[0].status !== 'SUCCEEDED') {
+      await client.query("UPDATE payments SET status='SUCCEEDED' WHERE id=$1",[input.paymentId]);
+      await client.query("UPDATE orders SET status='PAID' WHERE id=$1 AND status='PENDING_PAYMENT'",[payment.rows[0].order_id]);
+      await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) SELECT p.order_id,'PLATFORM_CLEARING',NULL,'CREDIT',p.amount_cents,o.currency FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND NOT EXISTS (SELECT 1 FROM ledger_entries WHERE order_id=payments.order_id AND account_type='PLATFORM_CLEARING' AND direction='CREDIT')`,[input.paymentId]);
+    } else if (input.status === 'FAILED') {
+      await client.query("UPDATE payments SET status='FAILED' WHERE id=$1 AND status <> 'SUCCEEDED'",[input.paymentId]);
+    }
+    await client.query('COMMIT');
+    return { duplicate: false };
+  } catch(e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+}
+
+/**
+ * Refunds are intentionally blocked until a live provider refund API,
+ * provider-confirmed outcomes, and reconciliation are implemented.
+ * Writing a local SUCCEEDED refund without processor confirmation would
+ * create a false financial record.
+ */
+export async function refundPayment(_paymentId: string, _amountCents: number): Promise<never> {
+  throw new Error('REFUND_PROVIDER_NOT_IMPLEMENTED: refunds are disabled until provider confirmation is available');
+}
