@@ -65,7 +65,7 @@ Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|adm
 2. Stripe : sandbox uniquement ; pas de paiements réels, de remboursements applicatifs, de Connect ni de versements.
 3. Sources frontend d'origine manquantes (la reconstruction est incluse dans `main`, mais le design, la langue, l'hébergement et les origines CORS restent à décider).
 4. Vérification octet par octet de la restauration impossible : l'archive ZIP d'origine ou l'export texte original est nécessaire. Cette vérification n'est **pas** terminée.
-5. Avertissement du script d'installation d'esbuild non traité (aucun changement `allowScripts`).
+5. Avertissement Vitest sur les options esbuild ignorées au profit d'OXC : résolu en retirant l'option esbuild redondante ; CI doit confirmer l'absence de l'avertissement.
 
 ## Documentation
 
