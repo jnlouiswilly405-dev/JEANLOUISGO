@@ -1,7 +1,8 @@
 # Stripe sandbox end-to-end test (opt-in)
 
-**Status: written and type-checked, NOT executed.** No Stripe test credentials were available in the recovery
-environment, and none were requested. It is skipped in CI and in every normal `npm run test:int` run.
+**Status: BLOCKED — awaiting a valid Stripe test secret (`sk_test_...`).** The latest manual workflow run
+stopped at the key-format check; the E2E test body has NOT executed. Normal CI remains independent and does
+not require Stripe credentials.
 
 Test: `backend/integration/stripe-sandbox-e2e.int.ts`
 
@@ -47,7 +48,7 @@ Dispatch-only; it never runs on push or pull request, and normal CI never sets t
 2. In that environment add secret `STRIPE_TEST_SECRET_KEY` = your Stripe **test-mode** secret key (Stripe dashboard, Test mode toggle on → Developers → API keys). Enter it only in the GitHub UI.
 3. Actions → "Stripe Sandbox E2E (manual, test mode only)" → Run workflow → type `SANDBOX` → approve the deployment.
 4. The workflow checks the key starts with `sk_test_` (without printing it), applies schema and migrations to a throwaway PostgreSQL, and runs only the E2E test.
-Status stays **NOT TESTED** until that run succeeds and its output is reviewed. GitHub masks secrets in logs; still, rotate the key if it is ever pasted anywhere else.
+The last run was **BLOCKED** at the key-format check, before the E2E test started. Status stays **BLOCKED** until a valid test key is configured and a run succeeds. GitHub masks secrets in logs; still, rotate the key if it is ever pasted anywhere else.
 
 ## Manual browser check (customer app)
 1. Run the backend with `STRIPE_SECRET_KEY` (`sk_test_`) and `STRIPE_WEBHOOK_SECRET` (from `stripe listen`) set.
