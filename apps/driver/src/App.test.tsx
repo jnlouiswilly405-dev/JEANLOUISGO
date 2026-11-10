@@ -50,7 +50,7 @@ describe('driver app', () => {
     const current = await screen.findByRole('list', { name: 'Current deliveries' });
     expect(within(current).getByRole('button', { name: 'Confirm pickup' })).toBeInTheDocument();
     expect(within(current).getByRole('button', { name: 'Mark delivered' })).toBeInTheDocument();
-    expect(within(screen.getByRole('list', { name: 'History' })).getByText('DELIVERED')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'History' })).getByText('Delivered')).toBeInTheDocument();
   });
 
   it('confirms pickup through the status endpoint and delivery steps through the delivery endpoint', async () => {

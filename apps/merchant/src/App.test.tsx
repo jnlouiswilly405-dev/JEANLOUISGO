@@ -147,7 +147,7 @@ describe('merchant app', () => {
     await signIn();
     await userEvent.click(screen.getByRole('button', { name: 'Reviews' }));
     expect(await screen.findByText('Great food')).toBeInTheDocument();
-    expect(screen.getByText('4.5')).toBeInTheDocument();
+    expect(screen.getByText(/Average rating: 4\.5/)).toBeInTheDocument();
     expect(api.calls.some((c) => c.path === '/api/merchants/m2/reviews')).toBe(false);
     expect(api.calls.filter((c) => c.path.includes('reviews')).every((c) => c.method === 'GET')).toBe(true);
   });

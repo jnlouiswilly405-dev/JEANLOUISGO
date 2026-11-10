@@ -1,4 +1,5 @@
 export * from './session.js';
+export * from './localization.js';
 export * from './components.js';
 export * from './useAsync.js';
 export * from './NotificationsPanel.js';

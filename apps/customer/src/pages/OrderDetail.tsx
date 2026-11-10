@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ChatToggle, ErrorBanner, useAsync, useSession } from '@multigo/app-shell';
+import { ChatToggle, ErrorBanner, translateStatus, useAsync, useLocalization, useSession } from '@multigo/app-shell';
 import { formatMoney } from '@multigo/api-client';
 import { PaymentStep } from './PaymentStep.js';
 import { ReviewForm } from './ReviewForm.js';
@@ -10,6 +10,7 @@ const POLL_MS = 10_000;
 
 export function OrderDetail({ id }: { id: string }) {
   const { client } = useSession();
+  const { locale, t } = useLocalization();
   const order = useAsync(() => client.orders.get(id), [client, id]);
   const tracking = useAsync(() => client.orders.tracking(id), [client, id]);
   const status = order.data?.status;
@@ -25,21 +26,21 @@ export function OrderDetail({ id }: { id: string }) {
   const o = order.data;
   const last = tracking.data?.[0];
   return (
-    <section aria-label="Order details">
-      <h2>Order</h2>
-      {order.loading && !o && <p role="status">Loading…</p>}
+    <section aria-label={t('orderDetails')}>
+      <h2>{t('order')}</h2>
+      {order.loading && !o && <p role="status">{t('loading')}</p>}
       <ErrorBanner message={order.error} />
       {o && (
         <>
-          <p>Status: <strong>{o.status}</strong></p>
+          <p>{t('status')}: <strong>{translateStatus(o.status, t)}</strong></p>
           {o.status === 'PENDING_PAYMENT' && <PaymentStep orderId={o.id} amountCents={o.totalCents} onSubmitted={reloadOrder} />}
-          <ul aria-label="Items">
-            {o.items.map((i) => <li key={i.productId}><span>{i.quantity} × {i.name}</span><span>{formatMoney(i.unitPriceCents * i.quantity, o.currency)}</span></li>)}
+          <ul aria-label={t('items')}>
+            {o.items.map((i) => <li key={i.productId}><span>{i.quantity} × {i.name}</span><span>{formatMoney(i.unitPriceCents * i.quantity, o.currency, locale)}</span></li>)}
           </ul>
-          <p>Subtotal {formatMoney(o.subtotalCents, o.currency)} · Delivery {formatMoney(o.deliveryFeeCents, o.currency)} · {o.discountCents ? <>Discount −{formatMoney(o.discountCents, o.currency)} · </> : null}<strong>Total {formatMoney(o.totalCents, o.currency)}</strong></p>
+          <p>{t('subtotal')} {formatMoney(o.subtotalCents, o.currency, locale)} · {t('delivery')} {formatMoney(o.deliveryFeeCents, o.currency, locale)} · {o.discountCents ? <>{t('discount')} −{formatMoney(o.discountCents, o.currency, locale)} · </> : null}<strong>{t('total')} {formatMoney(o.totalCents, o.currency, locale)}</strong></p>
           {CHAT_STATUSES.includes(o.status) && <ChatToggle orderId={o.id} />}
           {o.status === 'DELIVERED' && <ReviewForm orderId={o.id} merchantId={o.merchantId} />}
-          {last ? <p>Driver last seen at {last.lat.toFixed(4)}, {last.lng.toFixed(4)} ({new Date(last.recorded_at).toLocaleTimeString()})</p> : <p className="muted">No driver location yet.</p>}
+          {last ? <p>{t('driverLastSeen', { lat: last.lat.toFixed(4), lng: last.lng.toFixed(4), time: new Date(last.recorded_at).toLocaleTimeString(locale) })}</p> : <p className="muted">{t('noDriverLocation')}</p>}
         </>
       )}
     </section>

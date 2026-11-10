@@ -1,8 +1,9 @@
 import type { Order } from '@multigo/api-client';
+import type { TranslationKey } from '@multigo/app-shell';
 
 export type DriverAction =
-  | { kind: 'status'; status: 'PICKED_UP'; label: string }
-  | { kind: 'delivery'; action: 'PICKED_UP' | 'DELIVERED'; label: string };
+  | { kind: 'status'; status: 'PICKED_UP'; label: Extract<TranslationKey, 'confirmPickup'> }
+  | { kind: 'delivery'; action: 'PICKED_UP' | 'DELIVERED'; label: Extract<TranslationKey, 'startDelivery' | 'markDelivered'> };
 
 /**
  * Mirrors the backend: ASSIGNED -> PICKED_UP via POST /orders/:id/status; PICKED_UP -> IN_TRANSIT and
@@ -10,9 +11,9 @@ export type DriverAction =
  */
 export function nextDriverAction(status: Order['status']): DriverAction | null {
   switch (status) {
-    case 'ASSIGNED': return { kind: 'status', status: 'PICKED_UP', label: 'Confirm pickup' };
-    case 'PICKED_UP': return { kind: 'delivery', action: 'PICKED_UP', label: 'Start delivery' };
-    case 'IN_TRANSIT': return { kind: 'delivery', action: 'DELIVERED', label: 'Mark delivered' };
+    case 'ASSIGNED': return { kind: 'status', status: 'PICKED_UP', label: 'confirmPickup' };
+    case 'PICKED_UP': return { kind: 'delivery', action: 'PICKED_UP', label: 'startDelivery' };
+    case 'IN_TRANSIT': return { kind: 'delivery', action: 'DELIVERED', label: 'markDelivered' };
     default: return null;
   }
 }

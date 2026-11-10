@@ -1,6 +1,6 @@
 /** Backend amounts are integer cents; the currency is always reported by the API (currently USD). */
-export function formatMoney(cents: number, currency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100);
+export function formatMoney(cents: number, currency = 'USD', locale = 'en-US'): string {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(cents / 100);
 }
 
 /**

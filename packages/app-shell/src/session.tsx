@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createApiClient, type ApiClient, type User, type UserRole } from '@multigo/api-client';
+import { LocalizationProvider } from './localization.js';
 
 const STORAGE_KEY = 'multigo.session';
 
@@ -64,7 +65,11 @@ export function SessionProvider({ apiBaseUrl, allowedRoles, storage, fetchImpl, 
   }, [client, roles, store]);
 
   const value = useMemo<Session>(() => ({ user, restoring, client, login, logout: clear }), [user, restoring, client, login, clear]);
-  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+  return (
+    <LocalizationProvider>
+      <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+    </LocalizationProvider>
+  );
 }
 
 export function useSession(): Session {

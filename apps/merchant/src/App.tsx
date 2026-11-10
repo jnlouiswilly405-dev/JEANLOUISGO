@@ -1,25 +1,26 @@
 import { useState } from 'react';
-import { AuthGate, NotificationsPanel, useSession } from '@multigo/app-shell';
+import { AuthGate, NotificationsPanel, useDocumentTitle, useLocalization, useSession } from '@multigo/app-shell';
 import { Orders } from './pages/Orders.js';
 import { Menu } from './pages/Menu.js';
 import { Reviews } from './pages/Reviews.js';
 import { Settlements } from './pages/Settlements.js';
 
-const TABS = { orders: 'Orders', menu: 'Menu', settlements: 'Settlements', reviews: 'Reviews', notifications: 'Notifications' } as const;
+const TABS = { orders: 'merchantOrders', menu: 'merchantMenu', settlements: 'settlements', reviews: 'merchantReviews', notifications: 'notifications' } as const;
 type Tab = keyof typeof TABS;
 
 function Shell() {
   const { user, logout } = useSession();
+  const { t } = useLocalization();
   const [tab, setTab] = useState<Tab>('orders');
   return (
     <>
       <header>
-        <strong>MULTIGO Merchant</strong>
-        <nav aria-label="Main">
-          {(Object.keys(TABS) as Tab[]).map((t) => <button key={t} onClick={() => setTab(t)}>{TABS[t]}</button>)}
+        <strong>{t('merchantAppTitle')}</strong>
+        <nav aria-label={t('main')}>
+          {(Object.keys(TABS) as Tab[]).map((tab) => <button key={tab} onClick={() => setTab(tab)}>{t(TABS[tab])}</button>)}
         </nav>
         <span className="muted">{user?.displayName}</span>
-        <button onClick={logout}>Sign out</button>
+        <button onClick={logout}>{t('signOut')}</button>
       </header>
       <main>
         {tab === 'orders' && <Orders />}
@@ -33,5 +34,7 @@ function Shell() {
 }
 
 export function App() {
-  return <AuthGate title="MULTIGO Merchant — Sign in"><Shell /></AuthGate>;
+  const { t } = useLocalization();
+  useDocumentTitle('merchantAppTitle');
+  return <AuthGate title={t('merchantSignInTitle')}><Shell /></AuthGate>;
 }
