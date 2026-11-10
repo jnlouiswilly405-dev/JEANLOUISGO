@@ -11,6 +11,7 @@ beforeAll(async () => { pool = await getPool(); ({ base, close } = await startAp
 afterAll(async () => { await close(); });
 
 const code = () => `AD${randomUUID().slice(0, 8).toUpperCase()}`;
+const deliveryAddress = { line1: '1 Test Street', city: 'Spring Valley', stateCode: 'NY', postalCode: '10977' };
 
 describe('admin promo management', () => {
   it('rejects unauthenticated and non-admin callers', async () => {
@@ -36,7 +37,7 @@ describe('admin promo management', () => {
     expect(list.status).toBe(200);
     expect(list.body.items.some((p: { id: string }) => p.id === created.body.id)).toBe(true);
 
-    const order = await api(base, 'POST', '/api/orders', { token: cust.token, body: { merchantId, items: [{ productId, quantity: 1 }], deliveryFeeCents: 300, promoCode: c.toUpperCase() } });
+    const order = await api(base, 'POST', '/api/orders', { token: cust.token, body: { merchantId, items: [{ productId, quantity: 1 }], deliveryAddress, deliveryFeeCents: 300, promoCode: c.toUpperCase() } });
     expect(order.status).toBe(201);
     expect(order.body.discountCents).toBe(200);
 
@@ -44,7 +45,7 @@ describe('admin promo management', () => {
     expect(off.status).toBe(200);
     expect(off.body.active).toBe(false);
     const cust2 = await createUser(pool, 'CUSTOMER');
-    const rejected = await api(base, 'POST', '/api/orders', { token: cust2.token, body: { merchantId, items: [{ productId, quantity: 1 }], deliveryFeeCents: 300, promoCode: c } });
+    const rejected = await api(base, 'POST', '/api/orders', { token: cust2.token, body: { merchantId, items: [{ productId, quantity: 1 }], deliveryAddress, deliveryFeeCents: 300, promoCode: c } });
     expect(rejected.status).toBeGreaterThanOrEqual(400);
 
     const audit = await pool.query(`SELECT action FROM audit_events WHERE entity_type='PROMO' AND entity_id=$1 ORDER BY created_at`, [created.body.id]);

@@ -9,10 +9,25 @@ import { createReview, listMerchantReviewsPage } from '../reviews/service.js';
 import { validatePromo, createPromo, listPromos, setPromoActive } from '../promos/service.js';
 import { listEligibleDriverEarnings, listEligibleMerchantSettlements } from '../settlements/service.js';
 import { getAdminOrderFinancialSummary, getSystemHealth, listBlockedOutboxEvents, listUnreferencedStripePayments } from '../admin/service.js';
+import { getActiveDeliveryArea } from '../service-areas/service.js';
 import { pool } from '../../db/pool.js';
 
 export const finalRouter = Router();
 const requireDb = () => { if (!pool) throw new Error('DATABASE_URL is not configured'); return pool; };
+
+finalRouter.get('/service-areas/eligibility', async (req, res) => {
+  const parsed = z.object({
+    stateCode: z.string().regex(/^[A-Za-z]{2}$/).transform((value) => value.toUpperCase()),
+    postalCode: z.string().regex(/^[0-9]{5}$/),
+  }).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  try {
+    const area = await getActiveDeliveryArea(requireDb(), parsed.data.stateCode, parsed.data.postalCode);
+    return res.json(area ? { eligible: true, areaName: area.city_name } : { eligible: false });
+  } catch {
+    return res.status(503).json({ error: 'Service area unavailable' });
+  }
+});
 
 finalRouter.post('/drivers/:driverId/location', requireAuth, requireRole('DRIVER','ADMIN'), async (req,res)=>{
   const s=z.object({lat:z.number().min(-90).max(90),lng:z.number().min(-180).max(180),orderId:z.string().uuid().optional(),accuracyM:z.number().nonnegative().optional()}).safeParse(req.body);

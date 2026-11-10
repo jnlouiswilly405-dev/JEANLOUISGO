@@ -2,7 +2,7 @@ import { z, type ZodType } from 'zod';
 import {
   authResultSchema, blockedOutboxSchema, chatMessageSchema, chatMessagesSchema, chatThreadSchema, chatThreadsSchema, earningSchema, healthSchema, looseRowSchema, looseRowsSchema, meSchema,
   merchantSchema, notificationSchema, notificationsSchema, orderSchema, paymentSchema, productSchema, promoPreviewSchema, reviewListSchema, adminPromoSchema, adminPromoListSchema, type AdminPromoInput,
-  settlementSchema, trackingEventSchema, unreferencedPaymentsSchema,
+  settlementSchema, serviceAreaEligibilitySchema, trackingEventSchema, unreferencedPaymentsSchema, type DeliveryAddress,
   type OrderStatus,
 } from './schemas.js';
 
@@ -68,10 +68,19 @@ export function createApiClient(opts: ApiClientOptions) {
       products: (merchantId: string) => request('GET', `/api/catalog/merchant/${enc(merchantId)}`, productSchema.array()),
       createProduct: (input: { merchantId: string; name: string; description?: string; priceCents: number }) => request('POST', '/api/catalog', productSchema, input),
     },
+    serviceAreas: {
+      check: (stateCode: string, postalCode: string) => request(
+        'GET',
+        '/api/service-areas/eligibility',
+        serviceAreaEligibilitySchema,
+        undefined,
+        { stateCode, postalCode },
+      ),
+    },
     orders: {
       list: () => request('GET', '/api/orders', orderSchema.array()),
       get: (id: string) => request('GET', `/api/orders/${enc(id)}`, orderSchema),
-      create: (input: { merchantId: string; items: { productId: string; quantity: number }[]; deliveryFeeCents?: number; promoCode?: string }) => request('POST', '/api/orders', orderSchema, input),
+      create: (input: { merchantId: string; items: { productId: string; quantity: number }[]; deliveryAddress: DeliveryAddress; deliveryFeeCents?: number; promoCode?: string }) => request('POST', '/api/orders', orderSchema, input),
       setStatus: (id: string, status: Exclude<OrderStatus, 'PENDING_PAYMENT'>) => request('POST', `/api/orders/${enc(id)}/status`, orderSchema, { status }),
       tracking: (orderId: string) => request('GET', `/api/orders/${enc(orderId)}/tracking`, trackingEventSchema.array()),
       advanceDelivery: (orderId: string, action: 'PICKED_UP' | 'DELIVERED') => request('POST', `/api/orders/${enc(orderId)}/delivery`, looseRowSchema, { action }),

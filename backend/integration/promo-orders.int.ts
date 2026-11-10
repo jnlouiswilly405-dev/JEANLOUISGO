@@ -8,6 +8,7 @@ let base: string;
 let close: () => Promise<void>;
 let merchantId: string;
 let productId: string; // 2000 cents
+const deliveryAddress = { line1: '1 Test Street', city: 'Spring Valley', stateCode: 'NY', postalCode: '10977' };
 
 beforeAll(async () => {
   pool = await getPool();
@@ -28,7 +29,7 @@ async function promo(o: { type?: string; value?: number; max?: number | null; mi
   return { code, id: r.rows[0].id as string };
 }
 const place = (token: string, promoCode?: string, extra: Record<string, unknown> = {}) =>
-  api(base, 'POST', '/api/orders', { token, body: { merchantId, items: [{ productId, quantity: 1 }], deliveryFeeCents: 300, ...(promoCode ? { promoCode } : {}), ...extra } });
+  api(base, 'POST', '/api/orders', { token, body: { merchantId, items: [{ productId, quantity: 1 }], deliveryAddress, deliveryFeeCents: 300, ...(promoCode ? { promoCode } : {}), ...extra } });
 const used = async (id: string) => (await pool.query('SELECT used_count FROM promo_codes WHERE id=$1', [id])).rows[0].used_count as number;
 const redemptions = async (id: string) => (await pool.query('SELECT count(*)::int AS n FROM promo_redemptions WHERE promo_id=$1', [id])).rows[0].n as number;
 const orderCount = async (customerId: string) => (await pool.query('SELECT count(*)::int AS n FROM orders WHERE customer_id=$1', [customerId])).rows[0].n as number;
@@ -107,7 +108,7 @@ describe('promo codes in order creation', () => {
   it('refuses a promo that would make the total zero and leaves no trace', async () => {
     const p = await promo({ value: 100 });
     const c = await createUser(pool, 'CUSTOMER');
-    const r = await api(base, 'POST', '/api/orders', { token: c.token, body: { merchantId, items: [{ productId, quantity: 1 }], promoCode: p.code } });
+    const r = await api(base, 'POST', '/api/orders', { token: c.token, body: { merchantId, items: [{ productId, quantity: 1 }], deliveryAddress, promoCode: p.code } });
     expect(r.status).toBe(400);
     expect(JSON.stringify(r.body)).toContain('PROMO_NOT_APPLICABLE');
     expect(await orderCount(c.id)).toBe(0);
