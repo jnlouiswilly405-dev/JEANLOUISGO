@@ -55,7 +55,7 @@ Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|adm
 
 ## Sécurité — paiements
 
-- Stripe fonctionne uniquement en **mode test (sandbox)** : désactivé par défaut, activé seulement avec `STRIPE_SECRET_KEY` (`sk_test_...`) et `STRIPE_WEBHOOK_SECRET` ; les clés live sont refusées. Webhook signé sur corps brut : `POST /api/payments/webhook/stripe`. Les paiements réels, remboursements applicatifs, Stripe Connect et versements (payouts) restent **désactivés**.
+- Stripe fonctionne uniquement en **mode test (sandbox)** : désactivé par défaut, activé seulement avec `STRIPE_SECRET_KEY` (`sk_test_...` ou clé restreinte de test `rk_test_...`) et `STRIPE_WEBHOOK_SECRET` ; les clés live sont refusées. Webhook signé sur corps brut : `POST /api/payments/webhook/stripe`. Les paiements réels, remboursements applicatifs, Stripe Connect et versements (payouts) restent **désactivés**.
 - La politique financière des règlements n'est pas décidée (`docs/SETTLEMENT_FINANCIAL_POLICY_GATE.md`) ; la création réelle de règlements reste bloquée.
 - Ne pas déployer en production avant décision explicite.
 
