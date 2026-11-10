@@ -4,7 +4,7 @@ Status: **test-mode sandbox implemented** for phases 1–4 and 6 (see "Implement
 
 ## Implementation status
 - Done (sandbox, test keys only): `stripe` SDK dependency; `backend/src/modules/payments/stripe-provider.ts` (PaymentIntent creation with forwarded idempotency key, always `PENDING`; test-key-only guard that rejects `sk_live_`/`rk_live_`); raw-body signature-verified webhook `POST /api/payments/webhook/stripe` (`express.raw` mounted before `express.json`, payment fields taken from the verified event only); existing amount/currency/reference reconciliation and `(provider,event_id)` replay protection; unit tests (fake client, real signature helpers) and PostgreSQL integration tests.
-- Disabled by default: Stripe stays off unless `STRIPE_SECRET_KEY` (`sk_test_...`) and `STRIPE_WEBHOOK_SECRET` are both set. No Stripe keys are in CI.
+- Disabled by default: Stripe stays off unless a Stripe test-mode secret (`sk_test_...`) or restricted test key (`rk_test_...`) and `STRIPE_WEBHOOK_SECRET` are both set. No Stripe keys are in CI.
 - Provider-level `createRefund` exists and is unit tested with a fake client, but the application refund path (`refundPayment`, `POST /api/payments/:id/refund`) still throws `REFUND_PROVIDER_NOT_IMPLEMENTED`; ledger and settlement reversal need the approved policy.
 - Not done: scheduled reconciliation job against Stripe, real sandbox end-to-end run with a Stripe test account and Stripe CLI, Connect, payouts, any live key.
 - Known caveat: the PaymentIntent is created inside the payment DB transaction (row locks held during the network call); acceptable for sandbox, to be revisited before live use.
@@ -21,7 +21,7 @@ Status: **test-mode sandbox implemented** for phases 1–4 and 6 (see "Implement
 
 ### 1. SDK and configuration
 - Add the official `stripe` SDK (pinned, lockfile updated, `npm ci` verified, `npm audit --omit=dev` clean).
-- Add `STRIPE_SECRET_KEY` (validated, never logged) and keep `STRIPE_WEBHOOK_SECRET`. Refuse to start with a live key (`sk_live_`) unless an explicit `PAYMENTS_LIVE_ENABLED=true` owner-approved flag is set; default is test keys only.
+- Add `STRIPE_SECRET_KEY` (validated, never logged) and keep `STRIPE_WEBHOOK_SECRET`. Refuse live keys outright; only `sk_test_` and restricted `rk_test_` test-mode keys are accepted.
 - Secrets only via environment/secret manager; extend the error sanitizer and log redaction to cover Stripe key patterns.
 
 ### 2. Payment creation (sandbox only)

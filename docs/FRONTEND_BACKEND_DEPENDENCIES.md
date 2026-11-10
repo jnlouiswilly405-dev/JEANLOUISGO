@@ -12,7 +12,7 @@ Status after the backend dependency fixes approved on `recovery/v45-frontend-rec
 | Driver earnings | Unchanged | Read-only `GET /api/drivers/:driverId/earnings` | Empty while settlement is disabled; driver profile id only learnable from an assigned order |
 | Merchant settlements | Unchanged | Read-only `GET /api/merchants/:merchantId/settlements` | Empty while settlement is disabled |
 | Auth | Unchanged | login / `GET /api/auth/me` | No refresh token |
-| Stripe | Unchanged | PaymentIntent + webhook | Sandbox E2E needs `sk_test_` / `pk_test_` keys that are not available here: test written, **NOT executed** (`docs/STRIPE_SANDBOX_E2E.md`) |
+| Stripe | Unchanged | PaymentIntent + webhook | Backend sandbox E2E accepts `sk_test_` or restricted `rk_test_`; browser payment uses `pk_test_`. E2E remains **BLOCKED** pending successful validation (`docs/STRIPE_SANDBOX_E2E.md`) |
 
 No database schema or migration was changed for any of the above. Stripe live, Connect, refunds, settlements, earnings and payouts remain disabled; the outbox worker remains disabled by default.
 

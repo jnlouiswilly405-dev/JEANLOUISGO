@@ -1,7 +1,8 @@
 # Stripe sandbox end-to-end test (opt-in)
 
-**Status: written and type-checked, NOT executed.** No Stripe test credentials were available in the recovery
-environment, and none were requested. It is skipped in CI and in every normal `npm run test:int` run.
+**Status: BLOCKED — the latest run's nonempty, masked value matched neither supported test-key prefix**
+(`sk_test_` or `rk_test_`); the E2E test body has not executed. The logs do not identify the value or its type.
+Normal CI remains independent and does not require Stripe credentials.
 
 Test: `backend/integration/stripe-sandbox-e2e.int.ts`
 
@@ -16,24 +17,25 @@ Test: `backend/integration/stripe-sandbox-e2e.int.ts`
 It does not exercise Stripe delivering a webhook to a public URL, the browser Payment Element, refunds or Connect.
 
 ## How to run (owner, on a machine you control)
-Use a Stripe **test-mode** secret key from the Stripe dashboard (Developers → API keys, "Test mode"). Never paste it into
-chat, source files, CI logs or a committed `.env`.
+Use a Stripe **test-mode** secret key (`sk_test_...`) or restricted test-mode key (`rk_test_...`) from the Stripe
+dashboard (Developers → API keys, Sandbox). A restricted key must permit the PaymentIntent operations exercised
+by the test. Never paste it into chat, source files, CI logs or a committed `.env`.
 
 ```bash
 export DATABASE_URL=postgres://user:pass@localhost:5432/xxx_test   # database name must end in _test
-export STRIPE_SECRET_KEY=sk_test_...                               # test mode only
+export STRIPE_SECRET_KEY=sk_test_...                               # or rk_test_...; test mode only
 export STRIPE_SANDBOX_E2E=1
 npm run test:int --workspace backend -- stripe-sandbox-e2e
 ```
 
-Safety guards: the file throws immediately on an `sk_live_`/`rk_live_` key, only runs for `sk_test_` keys, and the backend
-provider (`readStripeSandboxConfig`) independently refuses live keys.
+Safety guards: the file throws immediately on an `sk_live_`/`rk_live_` key, only runs for `sk_test_` or `rk_test_`
+keys, and the backend provider (`readStripeSandboxConfig`) independently refuses live keys.
 
 ## Environment variables
 | Variable | Used by | Value | Required |
 |---|---|---|---|
 | `DATABASE_URL` | E2E test | local/CI PostgreSQL; name must end in `_test` | yes |
-| `STRIPE_SECRET_KEY` | E2E test, backend | `sk_test_...` only; `sk_live_`/`rk_live_` abort | yes |
+| `STRIPE_SECRET_KEY` | E2E test, backend | `sk_test_...` or `rk_test_...` only; `sk_live_`/`rk_live_` abort | yes |
 | `STRIPE_SANDBOX_E2E` | E2E test | `1` to enable (otherwise skipped) | yes |
 | `STRIPE_WEBHOOK_SECRET` | backend | the automated E2E sets a throwaway value itself; real `whsec_...` (from `stripe listen`) only for the manual browser check | no (E2E) |
 | `VITE_STRIPE_PUBLISHABLE_KEY` | customer app | `pk_test_...` only | manual browser check |
@@ -46,11 +48,11 @@ Dispatch-only; it never runs on push or pull request, and normal CI never sets t
 1. Repo → Settings → Environments → New environment `stripe-sandbox`; add yourself as **required reviewer**.
 2. In that environment add secret `STRIPE_TEST_SECRET_KEY` = your Stripe **test-mode** secret key (Stripe dashboard, Test mode toggle on → Developers → API keys). Enter it only in the GitHub UI.
 3. Actions → "Stripe Sandbox E2E (manual, test mode only)" → Run workflow → type `SANDBOX` → approve the deployment.
-4. The workflow checks the key starts with `sk_test_` (without printing it), applies schema and migrations to a throwaway PostgreSQL, and runs only the E2E test.
-Status stays **NOT TESTED** until that run succeeds and its output is reviewed. GitHub masks secrets in logs; still, rotate the key if it is ever pasted anywhere else.
+4. The workflow checks the key starts with `sk_test_` or `rk_test_` (without printing it), applies schema and migrations to a throwaway PostgreSQL, and runs only the E2E test.
+Status stays **BLOCKED** until a valid test key is configured and a run succeeds. GitHub masks secrets in logs; still, rotate the key if it is ever pasted anywhere else.
 
 ## Manual browser check (customer app)
-1. Run the backend with `STRIPE_SECRET_KEY` (`sk_test_`) and `STRIPE_WEBHOOK_SECRET` (from `stripe listen`) set.
+1. Run the backend with `STRIPE_SECRET_KEY` (`sk_test_` or `rk_test_`) and `STRIPE_WEBHOOK_SECRET` (from `stripe listen`) set.
 2. Run `stripe listen --forward-to localhost:4000/api/payments/webhook/stripe` (Stripe CLI, test mode).
 3. Start the customer app with `VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...`; place an order and pay with card `4242 4242 4242 4242`.
 4. The order should move to PAID only after the webhook arrives. The app refuses any key not starting with `pk_test_`.

@@ -6,16 +6,17 @@ import { api, createMerchant, createUser, getPool, insertOrder, orderStatus, sta
 
 /**
  * OPT-IN Stripe SANDBOX end-to-end test. It is skipped unless STRIPE_SANDBOX_E2E=1 and STRIPE_SECRET_KEY is a
- * Stripe TEST key (sk_test_...). Live keys abort the file. No real money can move: only test-mode objects and
- * the Stripe test card token pm_card_visa are used. See docs/STRIPE_SANDBOX_E2E.md.
+ * Stripe test-mode secret or restricted key (sk_test_... or rk_test_...). Live keys abort the file. No real
+ * money can move: only test-mode objects and the Stripe test card token pm_card_visa are used. See docs/STRIPE_SANDBOX_E2E.md.
  *
  * Flow: real backend -> real Stripe test-mode PaymentIntent -> test-card confirmation -> a webhook signed locally
  * with a throwaway secret -> order PAID, exactly one PLATFORM_CLEARING credit, replay adds nothing.
  */
 const key = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
 if (/^(sk|rk)_live_/.test(key)) throw new Error('STRIPE_LIVE_KEYS_FORBIDDEN: refusing to run against a live key');
-if (process.env.STRIPE_SANDBOX_E2E === '1' && !/^sk_test_[A-Za-z0-9]+$/.test(key)) throw new Error('STRIPE_SANDBOX_E2E=1 requires an sk_test_ key; refusing to report a silent skip as success');
-const enabled = process.env.STRIPE_SANDBOX_E2E === '1' && /^sk_test_[A-Za-z0-9]+$/.test(key);
+const isTestKey = /^(sk|rk)_test_[A-Za-z0-9]+$/.test(key);
+if (process.env.STRIPE_SANDBOX_E2E === '1' && !isTestKey) throw new Error('STRIPE_SANDBOX_E2E=1 requires an sk_test_ or rk_test_ key; refusing to report a silent skip as success');
+const enabled = process.env.STRIPE_SANDBOX_E2E === '1' && isTestKey;
 
 const WEBHOOK_SECRET = 'whsec_local_e2e_only';
 const saved = { hook: process.env.STRIPE_WEBHOOK_SECRET };

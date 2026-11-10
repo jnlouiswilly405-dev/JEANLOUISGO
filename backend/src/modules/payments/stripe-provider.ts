@@ -11,14 +11,14 @@ export interface StripeLikeClient {
 export interface StripeSandboxConfig { secretKey: string; webhookSecret: string }
 
 /**
- * Sandbox only. Returns null (provider stays disabled) unless a Stripe TEST secret key and a
- * webhook secret are configured. Live or restricted-live keys are refused outright.
+ * Sandbox only. Returns null (provider stays disabled) unless a Stripe test-mode secret or
+ * restricted key and a webhook secret are configured. Live keys are refused outright.
  */
 export function readStripeSandboxConfig(source: { STRIPE_SECRET_KEY?: string; STRIPE_WEBHOOK_SECRET?: string } = process.env): StripeSandboxConfig | null {
   const secretKey = source.STRIPE_SECRET_KEY?.trim();
   if (!secretKey) return null;
   if (/^(sk|rk)_live_/.test(secretKey)) throw new Error('STRIPE_LIVE_KEYS_FORBIDDEN: only Stripe test-mode keys are allowed');
-  if (!/^sk_test_[A-Za-z0-9]+$/.test(secretKey)) throw new Error('STRIPE_SECRET_KEY_INVALID: a Stripe test-mode secret key (sk_test_...) is required');
+  if (!/^(sk|rk)_test_[A-Za-z0-9]+$/.test(secretKey)) throw new Error('STRIPE_SECRET_KEY_INVALID: a Stripe test-mode secret or restricted key (sk_test_... or rk_test_...) is required');
   const webhookSecret = source.STRIPE_WEBHOOK_SECRET?.trim();
   if (!webhookSecret) return null;
   return { secretKey, webhookSecret };
