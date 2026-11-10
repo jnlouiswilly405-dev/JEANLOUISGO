@@ -73,13 +73,14 @@ jobs:
         env:
           STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
         run: |
-          if [ -z "$STRIPE_TEST_SECRET_KEY" ]; then
+          normalized_key="$(printf '%s' "$STRIPE_TEST_SECRET_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [ -z "$normalized_key" ]; then
             echo "::error::Secret STRIPE_TEST_SECRET_KEY is not configured in the stripe-sandbox environment."
             exit 1
           fi
-          case "$STRIPE_TEST_SECRET_KEY" in
+          case "$normalized_key" in
             sk_test_*|rk_test_*) echo "Key format check passed (test mode)." ;;
-            *) echo "::error::STRIPE_TEST_SECRET_KEY is not a supported Stripe test-mode key. Refusing to run."; exit 1 ;;
+            *) echo "::error::Expected a Stripe test secret (sk_test_) or restricted test key (rk_test_). Refusing to run."; exit 1 ;;
           esac
       - name: Run Stripe sandbox E2E (test mode)
         env:

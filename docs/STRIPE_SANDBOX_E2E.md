@@ -1,8 +1,8 @@
 # Stripe sandbox end-to-end test (opt-in)
 
-**Status: BLOCKED pending a run with a supported test-mode key (`sk_test_...` or `rk_test_...`).** The last
-`main` run stopped at the previous `sk_test_`-only format check; the E2E test body has not executed. Normal CI
-remains independent and does not require Stripe credentials.
+**Status: BLOCKED — the latest run's nonempty, masked value matched neither supported test-key prefix**
+(`sk_test_` or `rk_test_`); the E2E test body has not executed. The logs do not identify the value or its type.
+Normal CI remains independent and does not require Stripe credentials.
 
 Test: `backend/integration/stripe-sandbox-e2e.int.ts`
 
