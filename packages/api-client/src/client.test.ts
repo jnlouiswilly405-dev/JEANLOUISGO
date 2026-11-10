@@ -45,6 +45,14 @@ describe('api client', () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
+  it('checks service-area eligibility without requiring authentication', async () => {
+    const { client, fetchImpl } = setup(reply(200, { eligible: true, areaName: 'Spring Valley' }), null);
+    expect(await client.serviceAreas.check('NY', '10977')).toEqual({ eligible: true, areaName: 'Spring Valley' });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/service-areas/eligibility?stateCode=NY&postalCode=10977');
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
   it('rejects malformed success bodies and network failures', async () => {
     await expect(setup(reply(200, { nope: true })).client.auth.me()).rejects.toMatchObject({ message: 'Unexpected response from server' });
     await expect(setup(new Error('down')).client.auth.me()).rejects.toMatchObject({ status: 0, message: 'Network error' });

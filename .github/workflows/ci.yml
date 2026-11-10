@@ -25,7 +25,7 @@ jobs:
           test -s STAGING_CHECKLIST.md
           for required in \
             "HTTPS on a real phone" \
-            "MonCash sandbox" \
+            "Stripe Sandbox" \
             "restore from backup" \
             "rollback owner"; do
             grep -Fq "$required" STAGING_CHECKLIST.md

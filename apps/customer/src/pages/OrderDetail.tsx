@@ -33,6 +33,13 @@ export function OrderDetail({ id }: { id: string }) {
       {o && (
         <>
           <p>{t('status')}: <strong>{translateStatus(o.status, t)}</strong></p>
+          {o.deliveryAddress && (
+            <p>
+              <strong>{t('deliveryAddress')}:</strong> {o.deliveryAddress.line1}
+              {o.deliveryAddress.line2 ? `, ${o.deliveryAddress.line2}` : ''}
+              {`, ${o.deliveryAddress.city}, ${o.deliveryAddress.stateCode} ${o.deliveryAddress.postalCode}`}
+            </p>
+          )}
           {o.status === 'PENDING_PAYMENT' && <PaymentStep orderId={o.id} amountCents={o.totalCents} onSubmitted={reloadOrder} />}
           <ul aria-label={t('items')}>
             {o.items.map((i) => <li key={i.productId}><span>{i.quantity} × {i.name}</span><span>{formatMoney(i.unitPriceCents * i.quantity, o.currency, locale)}</span></li>)}

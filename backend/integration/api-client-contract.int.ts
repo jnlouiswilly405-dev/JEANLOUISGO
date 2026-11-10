@@ -9,6 +9,12 @@ let pool: Pool;
 let base: string;
 let close: () => Promise<void>;
 const clientFor = (token: string | null): ApiClient => createApiClient({ baseUrl: base, getToken: () => token });
+const deliveryAddress = {
+  line1: '1 Test Street',
+  city: 'Spring Valley',
+  stateCode: 'NY',
+  postalCode: '10977',
+};
 
 beforeAll(async () => {
   pool = await getPool();
@@ -37,10 +43,13 @@ describe('api-client contract', () => {
     expect((await c.merchants.list()).some((m) => m.id === merchantId)).toBe(true);
     const products = await c.merchants.products(merchantId);
     expect(products.find((p) => p.id === productId)?.price_cents).toBe(1250);
+    expect(await c.serviceAreas.check('NY', '10977')).toEqual({ eligible: true, areaName: 'Spring Valley' });
+    expect(await c.serviceAreas.check('NY', '00000')).toEqual({ eligible: false });
 
-    const order = await c.orders.create({ merchantId, items: [{ productId, quantity: 2 }], deliveryFeeCents: 300 });
+    const order = await c.orders.create({ merchantId, items: [{ productId, quantity: 2 }], deliveryAddress, deliveryFeeCents: 300 });
     expect(order.status).toBe('PENDING_PAYMENT');
     expect(order.totalCents).toBe(2800);
+    expect(order.deliveryAddress).toEqual(deliveryAddress);
 
     const payment = await c.payments.create({ orderId: order.id, provider: 'mock', amountCents: order.totalCents, idempotencyKey: randomUUID() });
     expect(payment.order_id).toBe(order.id);
@@ -62,7 +71,7 @@ describe('api-client contract', () => {
     const merchantId = await createMerchant(pool, owner.id);
     const productId = await createProduct(pool, merchantId, 900);
     const customer = await createUser(pool, 'CUSTOMER');
-    const order = await clientFor(customer.token).orders.create({ merchantId, items: [{ productId, quantity: 1 }] });
+    const order = await clientFor(customer.token).orders.create({ merchantId, items: [{ productId, quantity: 1 }], deliveryAddress });
     await pool.query("UPDATE orders SET status='PAID' WHERE id=$1", [order.id]);
 
     const m = clientFor(owner.token);
@@ -175,9 +184,9 @@ describe('api-client contract: notifications, reviews, promos, chat, read-only f
     const code = `FO${randomUUID().slice(0, 8).toUpperCase()}`;
     await pool.query(`INSERT INTO promo_codes (code,discount_type,discount_value) VALUES ($1,'PERCENT',10)`, [code]);
     const c = clientFor((await createUser(pool, 'CUSTOMER')).token);
-    const order = await c.orders.create({ merchantId, items: [{ productId, quantity: 1 }], promoCode: code });
+    const order = await c.orders.create({ merchantId, items: [{ productId, quantity: 1 }], deliveryAddress, promoCode: code });
     expect(order).toMatchObject({ subtotalCents: 2000, discountCents: 200, totalCents: 1800 });
-    await expect(c.orders.create({ merchantId, items: [{ productId, quantity: 1 }], promoCode: code })).rejects.toMatchObject({ status: 400 });
+    await expect(c.orders.create({ merchantId, items: [{ productId, quantity: 1 }], deliveryAddress, promoCode: code })).rejects.toMatchObject({ status: 400 });
   });
 
   it('chat: the client opens the order thread, exchanges messages and outsiders are refused', async () => {

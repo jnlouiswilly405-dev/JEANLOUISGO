@@ -6,7 +6,11 @@ import { App } from './App.js';
 import { useLocationSharing, type GeoLike } from './useLocationSharing.js';
 
 const user = { id: 'd-user', email: 'd@x.co', displayName: 'Dan', role: 'DRIVER' };
-const mkOrder = (id: string, status: string) => ({ id, customerId: 'c', merchantId: 'm', driverId: 'profile-1', items: [], subtotalCents: 1000, deliveryFeeCents: 200, totalCents: 1200, currency: 'USD', status, createdAt: '2026-01-01T00:00:00Z' });
+const mkOrder = (id: string, status: string) => ({
+  id, customerId: 'c', merchantId: 'm', driverId: 'profile-1',
+  deliveryAddress: { line1: '1 Test Street', city: 'Spring Valley', stateCode: 'NY', postalCode: '10977' },
+  items: [], subtotalCents: 1000, deliveryFeeCents: 200, totalCents: 1200, currency: 'USD', status, createdAt: '2026-01-01T00:00:00Z',
+});
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 
 function fakeApi(orders: unknown[], handlers: Record<string, () => Response> = {}) {
@@ -50,6 +54,7 @@ describe('driver app', () => {
     const current = await screen.findByRole('list', { name: 'Current deliveries' });
     expect(within(current).getByRole('button', { name: 'Confirm pickup' })).toBeInTheDocument();
     expect(within(current).getByRole('button', { name: 'Mark delivered' })).toBeInTheDocument();
+    expect(within(current).getAllByText(/1 Test Street, Spring Valley, NY 10977/)).toHaveLength(2);
     expect(within(screen.getByRole('list', { name: 'History' })).getByText('Delivered')).toBeInTheDocument();
   });
 

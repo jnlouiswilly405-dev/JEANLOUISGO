@@ -37,6 +37,13 @@ function OrderCard({ order, onChanged, geolocation }: { order: Order; onChanged:
   return (
     <li aria-label={t('orderNumber', { id: order.id.slice(0, 8) })}>
       <span>#{order.id.slice(0, 8)} · {formatMoney(order.totalCents, order.currency, locale)} · <em>{translateStatus(order.status, t)}</em></span>
+      {order.deliveryAddress && (
+        <p>
+          <strong>{t('deliveryAddress')}:</strong> {order.deliveryAddress.line1}
+          {order.deliveryAddress.line2 ? `, ${order.deliveryAddress.line2}` : ''}
+          {`, ${order.deliveryAddress.city}, ${order.deliveryAddress.stateCode} ${order.deliveryAddress.postalCode}`}
+        </p>
+      )}
       <span>
         {active && driverProfileId && (
           <label><input type="checkbox" checked={sharing} onChange={(e) => setSharing(e.target.checked)} /> {t('shareLocation')}</label>

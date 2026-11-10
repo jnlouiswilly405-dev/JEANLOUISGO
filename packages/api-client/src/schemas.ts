@@ -22,11 +22,20 @@ export type OrderStatus = z.infer<typeof orderStatusSchema>;
 export const orderItemSchema = z.object({
   productId: z.string(), name: z.string(), quantity: z.number(), unitPriceCents: z.number(),
 });
+export const deliveryAddressSchema = z.object({
+  line1: z.string(),
+  line2: z.string().optional(),
+  city: z.string(),
+  stateCode: z.string(),
+  postalCode: z.string(),
+});
+export type DeliveryAddress = z.infer<typeof deliveryAddressSchema>;
 export const orderSchema = z.object({
   id: z.string(),
   customerId: z.string(),
   merchantId: z.string(),
   driverId: z.string().optional(),
+  deliveryAddress: deliveryAddressSchema.optional(),
   items: z.array(orderItemSchema),
   subtotalCents: z.number(),
   deliveryFeeCents: z.number(),
@@ -41,6 +50,12 @@ export type Order = z.infer<typeof orderSchema>;
 
 export const merchantSchema = z.object({ id: z.string(), name: z.string(), owner_user_id: z.string().nullable().optional(), active: z.boolean(), created_at: z.string() });
 export type Merchant = z.infer<typeof merchantSchema>;
+
+export const serviceAreaEligibilitySchema = z.object({
+  eligible: z.boolean(),
+  areaName: z.string().optional(),
+});
+export type ServiceAreaEligibility = z.infer<typeof serviceAreaEligibilitySchema>;
 
 export const productSchema = z.object({
   id: z.string(), merchant_id: z.string(), name: z.string(),

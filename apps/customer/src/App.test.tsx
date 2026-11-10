@@ -7,9 +7,10 @@ import { App } from './App.js';
 const user = { id: 'u1', email: 'c@x.co', displayName: 'Cleo', role: 'CUSTOMER' };
 const merchant = { id: 'm1', name: 'Pizza Place', owner_user_id: 'o1', active: true, created_at: '2026-01-01T00:00:00Z' };
 const product = { id: 'p1', merchant_id: 'm1', name: 'Margherita', description: null, price_cents: 1200, active: true };
+const deliveryAddress = { line1: '1 Test Street', city: 'Spring Valley', stateCode: 'NY', postalCode: '10977' };
 const order = {
   id: 'o-1', customerId: 'u1', merchantId: 'm1', items: [{ productId: 'p1', name: 'Margherita', quantity: 2, unitPriceCents: 1200 }],
-  subtotalCents: 2400, deliveryFeeCents: 300, totalCents: 2700, currency: 'USD', status: 'PENDING_PAYMENT', createdAt: '2026-01-01T00:00:00Z',
+  subtotalCents: 2400, deliveryFeeCents: 300, totalCents: 2700, currency: 'USD', status: 'PENDING_PAYMENT', createdAt: '2026-01-01T00:00:00Z', deliveryAddress,
 };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 
@@ -25,6 +26,7 @@ function fakeApi(overrides: Record<string, () => Response> = {}) {
       'POST /api/auth/login': { user, token: 'tok' },
       'GET /api/merchants': [merchant],
       'GET /api/catalog/merchant/m1': [product],
+      'GET /api/service-areas/eligibility': { eligible: true, areaName: 'Spring Valley' },
       'GET /api/merchants/m1/reviews': { average: 4, count: 1, limit: 5, offset: 0, items: [{ id: 'r1', rating: 4, body: 'Tasty', createdAt: '2026-01-01T00:00:00Z' }] },
       'POST /api/orders': order,
       'GET /api/orders': [order],
@@ -48,6 +50,15 @@ async function signIn() {
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 }
 
+async function checkDeliveryAddress() {
+  await userEvent.type(screen.getByLabelText('Address line 1'), deliveryAddress.line1);
+  await userEvent.type(screen.getByLabelText('City'), deliveryAddress.city);
+  await userEvent.type(screen.getByLabelText('State (2-letter code)'), deliveryAddress.stateCode);
+  await userEvent.type(screen.getByLabelText('ZIP code'), deliveryAddress.postalCode);
+  await userEvent.click(screen.getByRole('button', { name: 'Check delivery area' }));
+  expect(await screen.findByText('Delivery is available in this area.')).toBeInTheDocument();
+}
+
 describe('customer app', () => {
   it('signs in, orders from a menu and shows the order awaiting payment', async () => {
     const api = fakeApi();
@@ -57,15 +68,17 @@ describe('customer app', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Add Margherita' }));
     await userEvent.click(screen.getByRole('button', { name: 'Increase Margherita' }));
     expect(screen.getByText('$24.00')).toBeInTheDocument();
+    await checkDeliveryAddress();
     await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
 
     const detail = await screen.findByRole('region', { name: 'Order details' });
     expect(await within(detail).findByText('Pending payment')).toBeInTheDocument();
+    expect(within(detail).getByText(/1 Test Street, Spring Valley, NY 10977/)).toBeInTheDocument();
     expect(within(detail).getByText(/Total \$27.00/)).toBeInTheDocument();
     expect(within(detail).getByText(/Card payment is unavailable: a Stripe test publishable key/)).toBeInTheDocument();
 
     const post = api.calls.find((c) => c.method === 'POST' && c.path === '/api/orders')!;
-    expect(post.body).toEqual({ merchantId: 'm1', items: [{ productId: 'p1', quantity: 2 }] });
+    expect(post.body).toEqual({ merchantId: 'm1', items: [{ productId: 'p1', quantity: 2 }], deliveryAddress });
     expect(post.auth).toBe('Bearer tok');
   });
 
@@ -83,10 +96,11 @@ describe('customer app', () => {
     await userEvent.type(screen.getByLabelText('Promo code'), 'SAVE10');
     await userEvent.click(screen.getByRole('button', { name: 'Check code' }));
     await screen.findByText(/Applied when you place the order/);
+    await checkDeliveryAddress();
     await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
     const detail = await screen.findByRole('region', { name: 'Order details' });
     expect(within(detail).getByText(/Discount −\$2.40/)).toBeInTheDocument();
-    expect(api.calls.find((c) => c.method === 'POST' && c.path === '/api/orders')!.body).toEqual({ merchantId: 'm1', items: [{ productId: 'p1', quantity: 2 }], promoCode: 'SAVE10' });
+    expect(api.calls.find((c) => c.method === 'POST' && c.path === '/api/orders')!.body).toEqual({ merchantId: 'm1', items: [{ productId: 'p1', quantity: 2 }], deliveryAddress, promoCode: 'SAVE10' });
   });
 
   it('does not send a promo code that was checked and then edited', async () => {
@@ -99,6 +113,7 @@ describe('customer app', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Check code' }));
     await screen.findByText(/Applied when you place the order/);
     await userEvent.type(screen.getByLabelText('Promo code'), 'X');
+    await checkDeliveryAddress();
     await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
     await screen.findByRole('region', { name: 'Order details' });
     expect(api.calls.find((c) => c.method === 'POST' && c.path === '/api/orders')!.body).not.toHaveProperty('promoCode');
@@ -116,6 +131,7 @@ describe('customer app', () => {
     await userEvent.type(screen.getByLabelText('Promo code'), 'SAVE10');
     await userEvent.click(screen.getByRole('button', { name: 'Check code' }));
     await screen.findByText(/Applied when you place the order/);
+    await checkDeliveryAddress();
     await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('You have already used this promo code');
     expect(screen.getByRole('list', { name: 'Cart' })).toHaveTextContent('Margherita');
@@ -127,9 +143,30 @@ describe('customer app', () => {
     await signIn();
     await userEvent.click(await screen.findByRole('button', { name: 'View menu' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Add Margherita' }));
+    await checkDeliveryAddress();
     await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('One or more products are unavailable');
     expect(screen.getByRole('list', { name: 'Cart' })).toHaveTextContent('Margherita');
+  });
+
+  it('shows Coming Soon and blocks order submission outside active ZIP codes', async () => {
+    const api = fakeApi({
+      'GET /api/service-areas/eligibility': () => json(200, { eligible: false }),
+    });
+    mount(api.impl);
+    await signIn();
+    await userEvent.click(await screen.findByRole('button', { name: 'View menu' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Margherita' }));
+    await userEvent.type(screen.getByLabelText('Address line 1'), deliveryAddress.line1);
+    await userEvent.type(screen.getByLabelText('City'), deliveryAddress.city);
+    await userEvent.type(screen.getByLabelText('State (2-letter code)'), 'NJ');
+    await userEvent.type(screen.getByLabelText('ZIP code'), '07001');
+    await userEvent.click(screen.getByRole('button', { name: 'Check delivery area' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Coming soon');
+    expect(screen.getByRole('button', { name: 'Place order' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Check delivery area' }));
+    expect(api.calls.some((call) => call.method === 'POST' && call.path === '/api/orders')).toBe(false);
   });
 
   it('lists past orders and opens their details', async () => {
