@@ -8,6 +8,7 @@ This checklist is for a staging environment only. Do not use production credenti
 - [ ] Configure the reverse proxy for the staging service, redirect HTTP to HTTPS, and verify certificate renewal.
 - [ ] Use a separate staging database and persistent data volume; confirm staging cannot access production data or services.
 - [ ] Use synthetic test accounts and data only.
+- [ ] Run a production-like staging backend with `NODE_ENV=production` (`NODE_ENV=staging` is unsupported); set `CORS_ORIGINS` to the exact comma-separated HTTPS frontend origins selected for staging, then verify listed origins are allowed and unlisted origins are rejected.
 - [ ] Store `ADMIN_API_TOKEN` and delivery-signing keys in the hosting platform's secret manager. Generate staging-only values, restrict access, and ensure values are not logged or committed.
 - [ ] Configure MonCash sandbox credentials only. Verify no production MonCash credentials or endpoints are configured.
 
