@@ -43,7 +43,7 @@ Voir `.env.example` pour les variables d'environnement.
 
 ## Frontends
 
-Les sources frontend **d'origine sont toujours manquantes** (non récupérées). Sur la branche `recovery/v45-frontend-reconstruction`, les applications ont été **reconstruites** (nouveau code, pas l'original) avec React 19, Vite et TypeScript, à partir des contrats API du backend :
+Les sources frontend **d'origine sont toujours manquantes** (non récupérées). Les applications ont été **reconstruites** (nouveau code, pas l'original) avec React 19, Vite et TypeScript, à partir des contrats API du backend. Cette reconstruction, d'abord développée sur `recovery/v45-frontend-reconstruction`, est maintenant incluse dans `main` :
 
 - `apps/customer` : catalogue, panier, commande, suivi, paiement par carte **sandbox uniquement** (clé `VITE_STRIPE_PUBLISHABLE_KEY` de type `pk_test_` ; toute autre clé est refusée).
 - `apps/merchant` : commandes (transitions autorisées uniquement), menu et restaurants.
@@ -63,7 +63,7 @@ Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|adm
 
 1. Politique financière des règlements/versements non décidée.
 2. Stripe : sandbox uniquement ; pas de paiements réels, de remboursements applicatifs, de Connect ni de versements.
-3. Sources frontend d'origine manquantes (une reconstruction existe sur `recovery/v45-frontend-reconstruction`, non fusionnée ; design et langue à décider).
+3. Sources frontend d'origine manquantes (la reconstruction est incluse dans `main`, mais le design, la langue, l'hébergement et les origines CORS restent à décider).
 4. Vérification octet par octet de la restauration impossible : l'archive ZIP d'origine ou l'export texte original est nécessaire. Cette vérification n'est **pas** terminée.
 5. Avertissement du script d'installation d'esbuild non traité (aucun changement `allowScripts`).
 

@@ -2,9 +2,9 @@
 
 **The ORIGINAL customer, driver, merchant and admin frontend source files are STILL MISSING. They have NOT been recovered.**
 
-Since the owner's approval, new apps have been **reconstructed** (new code, written against the existing backend API contracts) on branch `recovery/v45-frontend-reconstruction`. They are not the original source, their design and UI language are unverified against the original, and no original file list is known.
+Since the owner's approval, new apps have been **reconstructed** (new code, written against the existing backend API contracts). They were first developed on branch `recovery/v45-frontend-reconstruction` and are now included in `main`. They are not the original source, their design and UI language are unverified against the original, and no original file list is known.
 
-| App | Path | Original source | Reconstruction (branch `recovery/v45-frontend-reconstruction`) |
+| App | Path | Original source | Reconstruction (included in `main`) |
 |---|---|---|---|
 | Customer | `apps/customer/` | missing | React 19 + Vite + TS: browse, cart, order, order tracking, sandbox card payment (`pk_test_` only), order chat, notifications, reviews, promo codes |
 | Driver | `apps/driver/` | missing | active deliveries, delivery progression, opt-in location sharing, read-only earnings, notifications, order chat |

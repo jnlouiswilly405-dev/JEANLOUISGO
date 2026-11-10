@@ -64,7 +64,7 @@ Rules for every phase: new files only under `apps/<role>/` and a shared package;
 
 Safety: no UI calls refund, payout or settlement-creation; there are none to call. Frontends never hold secret keys. If the original archive appears, it replaces this plan and is diffed against any reconstruction.
 
-## 6. Reconstruction status (branch `recovery/v45-frontend-reconstruction`; RECONSTRUCTED, not recovered)
+## 6. Reconstruction status (first developed on `recovery/v45-frontend-reconstruction`, now included in `main`; RECONSTRUCTED, not recovered)
 
 Stack (owner-approved): React 19, Vite, TypeScript, Vitest + Testing Library; separate apps sharing `packages/api-client` (zod-validated typed client) and `packages/app-shell` (session, role gate, login). No backend endpoint was invented and no schema changed; `backend/integration/api-client-contract.int.ts` runs the real client against the real backend on PostgreSQL 16.
 
