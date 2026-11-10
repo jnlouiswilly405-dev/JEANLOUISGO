@@ -2,7 +2,7 @@
 
 **The ORIGINAL customer, driver, merchant and admin frontend source files are STILL MISSING. They have NOT been recovered.**
 
-Since the owner's approval, new apps have been **reconstructed** (new code, written against the existing backend API contracts) on branch `recovery/v45-frontend-reconstruction`. They are not the original source, their design and UI language are unverified against the original, and no original file list is known.
+Since the owner's approval, new apps have been **reconstructed** (new code, written against the existing backend API contracts) on branch `recovery/v45-frontend-reconstruction`. They are not the original source, their design and UI language are unverified against the original, and no original file list is known. The owner has since approved English (`en`), Spanish (`es`), Haitian Creole (`ht`), French (`fr`), and Simplified Chinese (`zh-CN`); localization work for these languages is on `copilot/v45-multilingual-ui`. The saved browser preference is origin-scoped and is not synchronized across separate app origins.
 
 | App | Path | Original source | Reconstruction (branch `recovery/v45-frontend-reconstruction`) |
 |---|---|---|---|

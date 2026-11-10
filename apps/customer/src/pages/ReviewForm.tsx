@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { ErrorBanner, useSession } from '@multigo/app-shell';
+import { ErrorBanner, useLocalization, useSession } from '@multigo/app-shell';
 import { ApiError } from '@multigo/api-client';
 
 /** Rating form for a delivered order (POST /api/reviews). The backend allows one review per order and reviewer. */
 export function ReviewForm({ orderId, merchantId }: { orderId: string; merchantId: string }) {
   const { client } = useSession();
+  const { t } = useLocalization();
   const [rating, setRating] = useState(5);
   const [body, setBody] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -23,27 +24,27 @@ export function ReviewForm({ orderId, merchantId }: { orderId: string; merchantI
       // The backend returns stable codes; raw text is never shown.
       const text = err instanceof Error ? err.message : '';
       setError(
-        text.includes('REVIEW_ALREADY_EXISTS') ? 'You have already reviewed this order.'
-        : text.includes('ORDER_NOT_DELIVERED') ? 'You can review an order only after it is delivered.'
-        : err instanceof ApiError && err.status === 403 ? 'Only the customer who placed the order can review it.'
-        : 'Could not send the review.',
+        text.includes('REVIEW_ALREADY_EXISTS') ? t('reviewAlreadyExists')
+        : text.includes('ORDER_NOT_DELIVERED') ? t('reviewAfterDelivered')
+        : err instanceof ApiError && err.status === 403 ? t('reviewOnlyCustomer')
+        : t('couldNotSendReview'),
       );
     } finally {
       setBusy(false);
     }
   }
 
-  if (done) return <p role="status">Thank you for your review.</p>;
+  if (done) return <p role="status">{t('thankYouReview')}</p>;
   return (
-    <form onSubmit={submit} aria-label="Rate this order">
-      <label>Rating
+    <form onSubmit={submit} aria-label={t('rateOrder')}>
+      <label>{t('rating')}
         <select value={rating} onChange={(e) => setRating(Number(e.target.value))}>
-          {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} / 5</option>)}
+          {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{t('outOfFive', { rating: n })}</option>)}
         </select>
       </label>
-      <label>Comment (optional)<textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={5000} /></label>
+      <label>{t('commentOptional')}<textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={5000} /></label>
       <ErrorBanner message={error} />
-      <button type="submit" disabled={busy}>Send review</button>
+      <button type="submit" disabled={busy}>{t('sendReview')}</button>
     </form>
   );
 }

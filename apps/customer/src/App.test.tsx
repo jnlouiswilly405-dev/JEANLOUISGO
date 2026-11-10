@@ -60,7 +60,7 @@ describe('customer app', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Place order' }));
 
     const detail = await screen.findByRole('region', { name: 'Order details' });
-    expect(await within(detail).findByText('PENDING_PAYMENT')).toBeInTheDocument();
+    expect(await within(detail).findByText('Pending payment')).toBeInTheDocument();
     expect(within(detail).getByText(/Total \$27.00/)).toBeInTheDocument();
     expect(within(detail).getByText(/Card payment is unavailable: a Stripe test publishable key/)).toBeInTheDocument();
 
@@ -192,6 +192,6 @@ describe('customer app', () => {
     await signIn();
     await userEvent.click(await screen.findByRole('button', { name: 'View menu' }));
     expect(await screen.findByText('Tasty')).toBeInTheDocument();
-    expect(screen.getByText('4.0')).toBeInTheDocument();
+    expect(screen.getByText(/Average rating: 4\.0/)).toBeInTheDocument();
   });
 });

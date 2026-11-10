@@ -53,6 +53,10 @@ Les sources frontend **d'origine sont toujours manquantes** (non récupérées).
 
 Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|admin>-app` (proxy `/api` vers `VITE_DEV_API_TARGET`, défaut `http://localhost:4000`). Ajouts : chat par commande (ouvert à la demande), notifications créées côté serveur, avis (client propriétaire d'une commande LIVRÉE uniquement), code promo appliqué et recalculé par le serveur à la création de la commande (remise sur le sous-total, total payé = total remisé), liste des avis par restaurant (note, texte, date), règlements (marchand) et gains (livreur) en **lecture seule**. Dépendances backend : `docs/FRONTEND_BACKEND_DEPENDENCIES.md`. Décision propriétaire : promos financées par la plateforme par défaut ; les promos financées par le marchand et leur traitement en règlement nécessitent une politique approuvée. Test E2E Stripe sandbox préparé mais **non exécuté** (`docs/STRIPE_SANDBOX_E2E.md`). Détails : `docs/FRONTEND_RECOVERY_PLAN.md` (section 6).
 
+### Langues de l’interface
+
+Les interfaces client, livreur, commerçant et administrateur prennent en charge l’anglais (`en`), l’espagnol (`es`), le créole haïtien (`ht`), le français (`fr`) et le chinois simplifié (`zh-CN`). Au premier lancement, l’application choisit la première langue de l’appareil prise en charge, sinon l’anglais. Le sélecteur reste accessible avant et après connexion. Le choix manuel est enregistré dans `localStorage` sous `multigo.language` et prévaut sur la détection automatique. Le stockage navigateur est limité à une origine : des applications hébergées sur des origines distinctes ne partagent pas automatiquement cette préférence.
+
 ## Sécurité — paiements
 
 - Stripe fonctionne uniquement en **mode test (sandbox)** : désactivé par défaut, activé seulement avec `STRIPE_SECRET_KEY` (`sk_test_...`) et `STRIPE_WEBHOOK_SECRET` ; les clés live sont refusées. Webhook signé sur corps brut : `POST /api/payments/webhook/stripe`. Les paiements réels, remboursements applicatifs, Stripe Connect et versements (payouts) restent **désactivés**.
@@ -63,7 +67,7 @@ Lancer une app : `npm run dev --workspace @multigo/<customer|merchant|driver|adm
 
 1. Politique financière des règlements/versements non décidée.
 2. Stripe : sandbox uniquement ; pas de paiements réels, de remboursements applicatifs, de Connect ni de versements.
-3. Sources frontend d'origine manquantes (une reconstruction existe sur `recovery/v45-frontend-reconstruction`, non fusionnée ; design et langue à décider).
+3. Sources frontend d'origine manquantes (une reconstruction existe sur `recovery/v45-frontend-reconstruction`, non fusionnée ; le design original reste à vérifier).
 4. Vérification octet par octet de la restauration impossible : l'archive ZIP d'origine ou l'export texte original est nécessaire. Cette vérification n'est **pas** terminée.
 5. Avertissement du script d'installation d'esbuild non traité (aucun changement `allowScripts`).
 

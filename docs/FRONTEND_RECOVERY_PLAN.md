@@ -55,7 +55,7 @@ Rules for every phase: new files only under `apps/<role>/` and a shared package;
 
 | Phase | Deliverable | Acceptance gate |
 |---|---|---|
-| 0 | Owner decisions: framework, hosting, design/brand assets, supported languages (the README is French; the UI language is an owner decision) | decision record in `docs/` |
+| 0 | Owner decisions: framework, hosting, design/brand assets, supported languages (approved: `en`, `es`, `ht`, `fr`, `zh-CN`) | decision record in `docs/` |
 | 1 | `packages/api-client`: typed client for the section 2 endpoints, error mapping (401/403/409/503), no secrets | type-check; contract tests against the PostgreSQL CI service using the existing integration helpers |
 | 2 | Customer app: auth, merchants/catalog, order creation, sandbox payment (publishable `pk_test_` key only), tracking | build and lint in CI; e2e happy path against the test API; Stripe test-mode only |
 | 3 | Merchant app: catalog and order status, read-only settlements | role-guard tests (a merchant cannot reach admin or driver data) |
@@ -83,4 +83,4 @@ Backend gaps for chat, notifications, reviews and promos were fixed (see `FRONTE
 
 Remaining blockers: Stripe sandbox E2E not executed (no test credentials); original frontend and ZIP not recovered (all frontend code is a reconstruction); byte-exact archive verification INCOMPLETE; chat is polling only; no PAID notification; no refresh token; settlement policy and merchant-funded promos are owner decisions.
 
-Open decisions: UI language and visual design (owner), hosting and CORS origins, and whether to add the unbuilt read-only views. Byte-exact archive verification remains INCOMPLETE.
+UI localization is being implemented on branch `copilot/v45-multilingual-ui` for the five approved languages. The remaining decisions are visual design, hosting and CORS origins, and whether to add the unbuilt read-only views. Browser language preference is stored per origin, so separately hosted frontends do not automatically share it. Byte-exact archive verification remains INCOMPLETE.

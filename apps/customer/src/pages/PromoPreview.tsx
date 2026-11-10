@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ErrorBanner, useSession } from '@multigo/app-shell';
+import { ErrorBanner, useLocalization, useSession } from '@multigo/app-shell';
 import { formatMoney, type PromoPreview as Preview } from '@multigo/api-client';
 
 /**
@@ -8,6 +8,7 @@ import { formatMoney, type PromoPreview as Preview } from '@multigo/api-client';
  */
 export function PromoPreview({ subtotalCents, onChange }: { subtotalCents: number; onChange?: (code: string | null) => void }) {
   const { client } = useSession();
+  const { locale, t } = useLocalization();
   const [code, setCode] = useState('');
   const [result, setResult] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,29 +26,29 @@ export function PromoPreview({ subtotalCents, onChange }: { subtotalCents: numbe
       setResult(preview);
       onChange?.(code.trim());
     } catch (err) {
-      setError(promoMessage(err instanceof Error ? err.message : ''));
+      setError(promoMessage(err instanceof Error ? err.message : '', t));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <form onSubmit={check} aria-label="Promotion">
-      <label>Promo code<input value={code} onChange={(e) => { setCode(e.target.value); setResult(null); onChange?.(null); }} maxLength={64} /></label>
-      <button type="submit" disabled={busy || code.trim() === ''}>Check code</button>
+    <form onSubmit={check} aria-label={t('promotion')}>
+      <label>{t('promoCode')}<input value={code} onChange={(e) => { setCode(e.target.value); setResult(null); onChange?.(null); }} maxLength={64} /></label>
+      <button type="submit" disabled={busy || code.trim() === ''}>{t('checkCode')}</button>
       <ErrorBanner message={error} />
       {result && (
         <p role="status">
-          Code {result.code} is valid: {formatMoney(Math.round(result.discount * 100))} off.
-          {' '}<span className="muted">{onChange ? 'Applied when you place the order; the server re-checks it.' : 'Preview only.'}</span>
+          {t('codeValid', { code: result.code, discount: formatMoney(Math.round(result.discount * 100), 'USD', locale) })}
+          {' '}<span className="muted">{onChange ? t('applyWhenPlacing') : t('previewOnly')}</span>
         </p>
       )}
     </form>
   );
 }
 
-function promoMessage(raw: string): string {
-  if (raw === 'PROMO_ALREADY_USED') return 'You have already used this code.';
-  if (raw === 'PROMO_INVALID') return 'This code is not valid for this order.';
-  return 'Could not check the code.';
+function promoMessage(raw: string, t: ReturnType<typeof useLocalization>['t']): string {
+  if (raw === 'PROMO_ALREADY_USED') return t('promoAlreadyUsed');
+  if (raw === 'PROMO_INVALID') return t('codeNotValid');
+  return t('couldNotCheckCode');
 }

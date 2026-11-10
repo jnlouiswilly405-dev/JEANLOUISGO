@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AuthGate, ChatToggle, ErrorBanner, NotificationsPanel, useAsync, useSession } from '@multigo/app-shell';
+import { AuthGate, ChatToggle, ErrorBanner, NotificationsPanel, translateStatus, useAsync, useDocumentTitle, useLocalization, useSession } from '@multigo/app-shell';
 import { formatMoney, netAmountCents, type Order } from '@multigo/api-client';
 import { ACTIVE_STATUSES, nextDriverAction } from './actions.js';
 import { useLocationSharing, type GeoLike } from './useLocationSharing.js';
@@ -8,6 +8,7 @@ const POLL_MS = 10_000;
 
 function OrderCard({ order, onChanged, geolocation }: { order: Order; onChanged: () => void; geolocation?: GeoLike | null }) {
   const { client } = useSession();
+  const { locale, t } = useLocalization();
   const action = nextDriverAction(order.status);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,18 +30,18 @@ function OrderCard({ order, onChanged, geolocation }: { order: Order; onChanged:
       if (action.kind === 'status') await client.orders.setStatus(order.id, action.status);
       else await client.orders.advanceDelivery(order.id, action.action);
       onChanged();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Update failed'); }
+    } catch (e) { setError(e instanceof Error ? e.message : t('updateFailed')); }
     finally { setBusy(false); }
   }
 
   return (
-    <li aria-label={`Order ${order.id.slice(0, 8)}`}>
-      <span>#{order.id.slice(0, 8)} · {formatMoney(order.totalCents, order.currency)} · <em>{order.status}</em></span>
+    <li aria-label={t('orderNumber', { id: order.id.slice(0, 8) })}>
+      <span>#{order.id.slice(0, 8)} · {formatMoney(order.totalCents, order.currency, locale)} · <em>{translateStatus(order.status, t)}</em></span>
       <span>
         {active && driverProfileId && (
-          <label><input type="checkbox" checked={sharing} onChange={(e) => setSharing(e.target.checked)} /> Share location</label>
+          <label><input type="checkbox" checked={sharing} onChange={(e) => setSharing(e.target.checked)} /> {t('shareLocation')}</label>
         )}
-        {action && <button disabled={busy} onClick={run}>{action.label}</button>}
+        {action && <button disabled={busy} onClick={run}>{t(action.label)}</button>}
       </span>
       {active && <ChatToggle orderId={order.id} />}
       <ErrorBanner message={error ?? location.error} />
@@ -50,6 +51,7 @@ function OrderCard({ order, onChanged, geolocation }: { order: Order; onChanged:
 
 function Deliveries({ geolocation }: { geolocation?: GeoLike | null }) {
   const { client } = useSession();
+  const { locale, t } = useLocalization();
   const orders = useAsync(() => client.orders.list(), [client]);
   const { reload } = orders;
   useEffect(() => {
@@ -62,15 +64,15 @@ function Deliveries({ geolocation }: { geolocation?: GeoLike | null }) {
   const past = mine.filter((o) => !ACTIVE_STATUSES.includes(o.status));
   return (
     <main>
-      <h2>Current deliveries</h2>
-      {orders.loading && !orders.data && <p role="status">Loading…</p>}
+      <h2>{t('currentDeliveries')}</h2>
+      {orders.loading && !orders.data && <p role="status">{t('loading')}</p>}
       <ErrorBanner message={orders.error} />
-      {orders.data && current.length === 0 && <p className="muted">No active deliveries.</p>}
-      <ul aria-label="Current deliveries">{current.map((o) => <OrderCard key={o.id} order={o} onChanged={reload} geolocation={geolocation} />)}</ul>
+      {orders.data && current.length === 0 && <p className="muted">{t('noActiveDeliveries')}</p>}
+      <ul aria-label={t('currentDeliveries')}>{current.map((o) => <OrderCard key={o.id} order={o} onChanged={reload} geolocation={geolocation} />)}</ul>
       {past.length > 0 && (
         <>
-          <h2>History</h2>
-          <ul aria-label="History">{past.map((o) => <li key={o.id}><span>#{o.id.slice(0, 8)} · {formatMoney(o.totalCents, o.currency)}</span><em>{o.status}</em></li>)}</ul>
+          <h2>{t('history')}</h2>
+          <ul aria-label={t('history')}>{past.map((o) => <li key={o.id}><span>#{o.id.slice(0, 8)} · {formatMoney(o.totalCents, o.currency, locale)}</span><em>{translateStatus(o.status, t)}</em></li>)}</ul>
         </>
       )}
     </main>
@@ -79,25 +81,26 @@ function Deliveries({ geolocation }: { geolocation?: GeoLike | null }) {
 
 function Earnings() {
   const { client } = useSession();
+  const { locale, t } = useLocalization();
   const orders = useAsync(() => client.orders.list(), [client]);
   // The only place the API reveals a driver profile id is an assigned order.
   const profileId = orders.data?.find((o) => o.driverId)?.driverId;
   const rows = useAsync(() => (profileId ? client.finance.driverEarnings(profileId) : Promise.resolve([])), [client, profileId]);
   return (
-    <main aria-label="Earnings">
-      <h2>Earnings</h2>
-      <p className="muted">Read-only view. Payouts are not enabled, and the earnings policy has not been decided.</p>
-      {(orders.loading || rows.loading) && !rows.data && <p role="status">Loading…</p>}
+    <main aria-label={t('earnings')}>
+      <h2>{t('earnings')}</h2>
+      <p className="muted">{t('earningsReadOnly')}</p>
+      {(orders.loading || rows.loading) && !rows.data && <p role="status">{t('loading')}</p>}
       <ErrorBanner message={orders.error ?? rows.error} />
-      {orders.data && !profileId && <p className="muted">Your earnings appear once you have been assigned a delivery.</p>}
-      {profileId && rows.data && rows.data.length === 0 && <p className="muted">No eligible earnings.</p>}
+      {orders.data && !profileId && <p className="muted">{t('earningsAfterAssignment')}</p>}
+      {profileId && rows.data && rows.data.length === 0 && <p className="muted">{t('noEligibleEarnings')}</p>}
       <ul>
         {rows.data?.map((e) => {
           const cents = netAmountCents(e);
           return (
             <li key={e.id}>
-              <span>Order #{e.order_id.slice(0, 8)} · {new Date(e.created_at).toLocaleDateString()}</span>
-              <span>{cents === null ? '—' : formatMoney(cents)} · <em>{e.status}</em></span>
+              <span>{t('orderNumber', { id: e.order_id.slice(0, 8) })} · {new Date(e.created_at).toLocaleDateString(locale)}</span>
+              <span>{cents === null ? '—' : formatMoney(cents, 'USD', locale)} · <em>{translateStatus(e.status, t)}</em></span>
             </li>
           );
         })}
@@ -106,22 +109,23 @@ function Earnings() {
   );
 }
 
-const TABS = { deliveries: 'Deliveries', earnings: 'Earnings', notifications: 'Notifications' } as const;
+const TABS = { deliveries: 'currentDeliveries', earnings: 'earnings', notifications: 'notifications' } as const;
 type Tab = keyof typeof TABS;
 
 function Shell({ geolocation }: { geolocation?: GeoLike | null }) {
   const { user, logout } = useSession();
+  const { t } = useLocalization();
   const [tab, setTab] = useState<Tab>('deliveries');
   return (
     <>
       <header>
-        <strong>MULTIGO Driver</strong>
-        <nav aria-label="Main">
-          {(Object.keys(TABS) as Tab[]).map((t) => <button key={t} onClick={() => setTab(t)}>{TABS[t]}</button>)}
+        <strong>{t('driverAppTitle')}</strong>
+        <nav aria-label={t('main')}>
+          {(Object.keys(TABS) as Tab[]).map((tab) => <button key={tab} onClick={() => setTab(tab)}>{t(TABS[tab])}</button>)}
         </nav>
         <span style={{ flex: 1 }} />
         <span className="muted">{user?.displayName}</span>
-        <button onClick={logout}>Sign out</button>
+        <button onClick={logout}>{t('signOut')}</button>
       </header>
       {tab === 'deliveries' && <Deliveries geolocation={geolocation} />}
       {tab === 'earnings' && <Earnings />}
@@ -131,5 +135,7 @@ function Shell({ geolocation }: { geolocation?: GeoLike | null }) {
 }
 
 export function App({ geolocation }: { geolocation?: GeoLike | null } = {}) {
-  return <AuthGate title="MULTIGO Driver — Sign in"><Shell geolocation={geolocation} /></AuthGate>;
+  const { t } = useLocalization();
+  useDocumentTitle('driverAppTitle');
+  return <AuthGate title={t('driverSignInTitle')}><Shell geolocation={geolocation} /></AuthGate>;
 }

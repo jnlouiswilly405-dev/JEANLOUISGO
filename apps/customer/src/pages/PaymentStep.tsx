@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadStripe, type Stripe, type StripeElements } from '@stripe/stripe-js';
-import { ErrorBanner, useSession } from '@multigo/app-shell';
+import { ErrorBanner, useLocalization, useSession } from '@multigo/app-shell';
 
 type LoadStripe = (key: string) => Promise<Stripe | null>;
 
@@ -20,6 +20,7 @@ interface Props {
  */
 export function PaymentStep({ orderId, amountCents, onSubmitted, publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY, loadStripeImpl = loadStripe }: Props) {
   const { client } = useSession();
+  const { t } = useLocalization();
   const mountRef = useRef<HTMLDivElement>(null);
   const idempotencyKey = useRef(`order-${orderId}-${crypto.randomUUID()}`);
   const [stripe, setStripe] = useState<Stripe | null>(null);
@@ -36,13 +37,13 @@ export function PaymentStep({ orderId, amountCents, onSubmitted, publishableKey 
     setError(null);
     try {
       const payment = await client.payments.create({ orderId, provider: 'stripe', amountCents, idempotencyKey: idempotencyKey.current });
-      if (!payment.clientSecret) throw new Error('The server did not return a payment session.');
+      if (!payment.clientSecret) throw new Error(t('serverNoPaymentSession'));
       const s = await loadStripeImpl(publishableKey);
-      if (!s) throw new Error('Could not load the payment library.');
+      if (!s) throw new Error(t('couldNotLoadPaymentLibrary'));
       setStripe(s);
       setElements(s.elements({ clientSecret: payment.clientSecret }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start payment');
+      setError(e instanceof Error ? e.message : t('couldNotStartPayment'));
     } finally {
       setBusy(false);
     }
@@ -61,28 +62,28 @@ export function PaymentStep({ orderId, amountCents, onSubmitted, publishableKey 
     setError(null);
     try {
       const res = await stripe.confirmPayment({ elements, confirmParams: { return_url: window.location.href }, redirect: 'if_required' });
-      if (res.error) setError(res.error.message ?? 'Payment failed');
+      if (res.error) setError(res.error.message ?? t('paymentFailed'));
       else { setSubmitted(true); onSubmitted(); }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Payment failed');
+      setError(e instanceof Error ? e.message : t('paymentFailed'));
     } finally {
       setBusy(false);
     }
   }
 
   if (!keyOk) {
-    return <p className="muted">Card payment is unavailable: a Stripe test publishable key (pk_test_…) is not configured. Live keys are refused.</p>;
+    return <p className="muted">{t('paymentUnavailable')}</p>;
   }
   if (submitted) {
-    return <p role="status">Payment submitted. Waiting for the server to confirm it; the order will update automatically.</p>;
+    return <p role="status">{t('paymentSubmitted')}</p>;
   }
   return (
-    <div aria-label="Payment">
-      <p className="banner">Test mode — no real money is charged.</p>
+    <div aria-label={t('payment')}>
+      <p className="banner">{t('testModeNoCharge')}</p>
       <ErrorBanner message={error} />
-      {!elements && <button onClick={start} disabled={busy}>Pay by card</button>}
+      {!elements && <button onClick={start} disabled={busy}>{t('payByCard')}</button>}
       <div ref={mountRef} />
-      {elements && <button onClick={confirm} disabled={busy}>Confirm payment</button>}
+      {elements && <button onClick={confirm} disabled={busy}>{t('confirmPayment')}</button>}
     </div>
   );
 }
