@@ -64,7 +64,7 @@ Rules for every phase: new files only under `apps/<role>/` and a shared package;
 
 Safety: no UI calls refund, payout or settlement-creation; there are none to call. Frontends never hold secret keys. If the original archive appears, it replaces this plan and is diffed against any reconstruction.
 
-## 6. Reconstruction status (branch `recovery/v45-frontend-reconstruction`; RECONSTRUCTED, not recovered)
+## 6. Reconstruction status (first developed on `recovery/v45-frontend-reconstruction`, now included in `main`; RECONSTRUCTED, not recovered)
 
 Stack (owner-approved): React 19, Vite, TypeScript, Vitest + Testing Library; separate apps sharing `packages/api-client` (zod-validated typed client) and `packages/app-shell` (session, role gate, login). No backend endpoint was invented and no schema changed; `backend/integration/api-client-contract.int.ts` runs the real client against the real backend on PostgreSQL 16.
 
@@ -79,8 +79,8 @@ Stack (owner-approved): React 19, Vite, TypeScript, Vitest + Testing Library; se
 
 Payment safety: `PaymentStep` accepts only `VITE_STRIPE_PUBLISHABLE_KEY` values starting with `pk_test_` and renders no form otherwise. It never sets an order to PAID; PAID comes only from the backend's verified webhook, and the UI just waits and re-reads the order. Stripe.js is loaded from Stripe at runtime. Built bundles were scanned and contain no `sk_`, `whsec_` or `pk_live` strings.
 
-Backend gaps for chat, notifications, reviews and promos were fixed (see `FRONTEND_BACKEND_DEPENDENCIES.md` for what each now does and what remains). Stripe sandbox E2E (`STRIPE_SANDBOX_E2E.md`) is written but NOT executed.
+Backend gaps for chat, notifications, reviews and promos were fixed (see `FRONTEND_BACKEND_DEPENDENCIES.md` for what each now does and what remains). Stripe sandbox E2E (`STRIPE_SANDBOX_E2E.md`) is BLOCKED pending a valid `sk_test_` secret; the latest run stopped at the key-format check and did not execute the test body.
 
-Remaining blockers: Stripe sandbox E2E not executed (no test credentials); original frontend and ZIP not recovered (all frontend code is a reconstruction); byte-exact archive verification INCOMPLETE; chat is polling only; no PAID notification; no refresh token; settlement policy and merchant-funded promos are owner decisions.
+Remaining blockers: Stripe sandbox E2E awaits a valid test secret; original frontend and ZIP not recovered (all frontend code is a reconstruction); byte-exact archive verification INCOMPLETE; chat is polling only; no PAID notification; no refresh token; settlement policy and merchant-funded promos are owner decisions.
 
 Open decisions: UI language and visual design (owner), hosting and CORS origins, and whether to add the unbuilt read-only views. Byte-exact archive verification remains INCOMPLETE.
