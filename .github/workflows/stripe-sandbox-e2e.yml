@@ -78,8 +78,8 @@ jobs:
             exit 1
           fi
           case "$STRIPE_TEST_SECRET_KEY" in
-            sk_test_*) echo "Key format check passed (test mode)." ;;
-            *) echo "::error::STRIPE_TEST_SECRET_KEY is not an sk_test_ key. Refusing to run."; exit 1 ;;
+            sk_test_*|rk_test_*) echo "Key format check passed (test mode)." ;;
+            *) echo "::error::STRIPE_TEST_SECRET_KEY is not a Stripe test-mode secret key. Refusing to run."; exit 1 ;;
           esac
       - name: Run Stripe sandbox E2E (test mode)
         env:

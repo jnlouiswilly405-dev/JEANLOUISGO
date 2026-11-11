@@ -19,13 +19,14 @@ describe("Stripe sandbox E2E cannot run accidentally", () => {
     expect(t).toMatch(/^on:\s*\n\s+workflow_dispatch:/m);
     expect(t).not.toMatch(/^\s+(push|pull_request|schedule):/m);
     expect(t).toMatch(/environment: stripe-sandbox/);
-    expect(t).toMatch(/sk_test_\*\)/);
+    expect(t).toMatch(/sk_test_\*\|rk_test_\*\)/);
     expect(t).not.toMatch(/sk_live|rk_live|pk_live/);
   });
 
   it("the E2E test file is skipped unless explicitly enabled and aborts on live keys", () => {
     const t = readFileSync(join(root, "backend/integration/stripe-sandbox-e2e.int.ts"), "utf8");
     expect(t).toMatch(/STRIPE_SANDBOX_E2E === '1'/);
+    expect(t).toMatch(/rk_test_/);
     expect(t).toMatch(/STRIPE_LIVE_KEYS_FORBIDDEN/);
     expect(t).toMatch(/describe\.skipIf\(!enabled\)/);
   });
