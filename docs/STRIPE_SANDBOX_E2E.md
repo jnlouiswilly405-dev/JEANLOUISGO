@@ -1,8 +1,8 @@
 # Stripe sandbox end-to-end test (opt-in)
 
-**Status: BLOCKED.** The latest observed manual run stopped at the key-format guard before the E2E body ran.
-The key is masked in Actions logs, so its specific format cannot be determined. The updated strict validator has
-not yet been verified by a successful manual run. Normal CI does not require Stripe credentials.
+**Status: ON HOLD — pending external auditor assistance.** Prior manual runs stopped at the key-format guard before the E2E body ran.
+The key is masked in Actions logs, so its specific format cannot be determined. Do not rerun this workflow while it is on hold.
+The strict validator has not yet been verified by a successful manual run. Normal CI does not require Stripe credentials.
 
 Test: `backend/integration/stripe-sandbox-e2e.int.ts`
 
@@ -50,7 +50,7 @@ Dispatch-only; it never runs on push or pull request, and normal CI never sets t
 2. In that environment add secret `STRIPE_TEST_SECRET_KEY` = your Stripe **test-mode** secret key (Stripe dashboard, Test mode on → Developers → API keys). Only enter it in the GitHub UI; do not print or expose the value.
 3. Actions → "Stripe Sandbox E2E (manual, test mode only)" → Run workflow → type `SANDBOX` → approve the deployment.
 4. The workflow trims surrounding whitespace and accepts only complete `sk_test_[A-Za-z0-9]+` or `rk_test_[A-Za-z0-9]+` values, without printing the key; it applies schema and migrations to throwaway PostgreSQL and runs only this E2E test.
-The latest observed run did not pass the key-format guard, so **E2E remains BLOCKED** until the environment secret is reviewed privately by an authorized owner and a new run succeeds. The secret value is not available for inspection through this workflow review. Rotate the key if it is ever exposed.
+The latest observed run did not pass the key-format guard, so **E2E remains pending external auditor assistance**. An authorized owner/auditor must privately validate the protected environment configuration before a new, approved run. The secret value is not available for inspection through this workflow review; never share it in chat or logs, and rotate it if it is ever exposed.
 
 ## Manual browser check (customer app)
 1. Run the backend with `STRIPE_SECRET_KEY` (`sk_test_` or `rk_test_`) and `STRIPE_WEBHOOK_SECRET` (from `stripe listen`) set.

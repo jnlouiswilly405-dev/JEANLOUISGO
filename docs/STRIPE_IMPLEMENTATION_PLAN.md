@@ -7,7 +7,7 @@ Status: **test-mode sandbox implemented** for phases 1–4 and 6 (see "Implement
 - Disabled by default: Stripe stays off unless `STRIPE_SECRET_KEY` (`sk_test_...` or `rk_test_...`) and `STRIPE_WEBHOOK_SECRET` are both set. No Stripe keys are in CI.
 - Provider-level `createRefund` exists and is unit tested with a fake client, but the application refund path (`refundPayment`, `POST /api/payments/:id/refund`) still throws `REFUND_PROVIDER_NOT_IMPLEMENTED`; ledger and settlement reversal need the approved policy.
 - Not done: scheduled reconciliation job against Stripe, real sandbox end-to-end run with a Stripe test account and Stripe CLI, Connect, payouts, any live key.
-- Known caveat: the PaymentIntent is created inside the payment DB transaction (row locks held during the network call); acceptable for sandbox, to be revisited before live use.
+- Resolved: PaymentIntent creation runs only after the payment-attempt transaction commits and releases its row locks (`payment.service.ts`). The real Stripe sandbox E2E that verifies this provider path remains pending external auditor assistance.
 
 ## Original stub points (before this work)
 
