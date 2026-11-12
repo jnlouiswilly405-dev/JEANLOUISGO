@@ -10,6 +10,7 @@ This checklist is for a staging environment only. Do not use production credenti
 - [ ] Use synthetic test accounts and data only.
 - [ ] Store `ADMIN_API_TOKEN` and delivery-signing keys in the hosting platform's secret manager. Generate staging-only values, restrict access, and ensure values are not logged or committed.
 - [ ] Configure MonCash sandbox credentials only. Verify no production MonCash credentials or endpoints are configured.
+- [ ] Configure the reviewer-gated `stripe-sandbox` environment with a test-only Stripe secret (`sk_test_` or `rk_test_`); never print or expose it.
 
 ## Staging verification
 
@@ -18,6 +19,7 @@ This checklist is for a staging environment only. Do not use production credenti
 - [ ] Dispatch a courier and verify order lifecycle transitions and customer-visible tracking.
 - [ ] Verify GPS permission, location updates, and tracking over HTTPS on a real phone; test denied permission and recovery.
 - [ ] Exercise MonCash sandbox payment success, failure/cancellation, and duplicate callback handling; verify payment/order reconciliation.
+- [ ] Run the Stripe Sandbox E2E and verify test-mode PaymentIntent creation, signed webhook reconciliation, and idempotent replay; confirm no live payments, refunds, settlements, or payouts occur.
 - [ ] Create a staging backup, restore from backup into an isolated target, and verify restored data and service operation.
 - [ ] Confirm logs, alerts, and monitoring work without exposing secrets or sensitive customer data.
 

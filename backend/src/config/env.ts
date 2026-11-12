@@ -7,7 +7,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32).default('dev-only-change-this-secret-before-production-123456'),
   JWT_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
-  // Stripe TEST-mode key only (sk_test_...). Live keys are rejected; unset keeps Stripe disabled.
+  // Stripe TEST-mode key only (sk_test_... or rk_test_...). Live keys are rejected; unset keeps Stripe disabled.
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   // Comma-separated exact browser origins, e.g. https://app.example.com
   CORS_ORIGINS: z.string().optional(),

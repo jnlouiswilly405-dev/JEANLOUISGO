@@ -37,9 +37,14 @@ describe("readStripeSandboxConfig", () => {
 
   it("accepts only test-mode secret keys and refuses live keys", () => {
     expect(readStripeSandboxConfig({ STRIPE_SECRET_KEY: "sk_test_abc", STRIPE_WEBHOOK_SECRET: SECRET })).toEqual({ secretKey: "sk_test_abc", webhookSecret: SECRET });
+    expect(readStripeSandboxConfig({ STRIPE_SECRET_KEY: "rk_test_abc", STRIPE_WEBHOOK_SECRET: SECRET })).toEqual({ secretKey: "rk_test_abc", webhookSecret: SECRET });
+    expect(readStripeSandboxConfig({ STRIPE_SECRET_KEY: " \trk_test_abc \n", STRIPE_WEBHOOK_SECRET: SECRET })).toEqual({ secretKey: "rk_test_abc", webhookSecret: SECRET });
+    expect(readStripeSandboxConfig({ STRIPE_SECRET_KEY: " \t ", STRIPE_WEBHOOK_SECRET: SECRET })).toBeNull();
     expect(() => readStripeSandboxConfig({ STRIPE_SECRET_KEY: "sk_live_abc", STRIPE_WEBHOOK_SECRET: SECRET })).toThrow("STRIPE_LIVE_KEYS_FORBIDDEN");
+    expect(() => readStripeSandboxConfig({ STRIPE_SECRET_KEY: " rk_live_abc ", STRIPE_WEBHOOK_SECRET: SECRET })).toThrow("STRIPE_LIVE_KEYS_FORBIDDEN");
     expect(() => readStripeSandboxConfig({ STRIPE_SECRET_KEY: "rk_live_abc", STRIPE_WEBHOOK_SECRET: SECRET })).toThrow("STRIPE_LIVE_KEYS_FORBIDDEN");
     expect(() => readStripeSandboxConfig({ STRIPE_SECRET_KEY: "pk_test_abc", STRIPE_WEBHOOK_SECRET: SECRET })).toThrow("STRIPE_SECRET_KEY_INVALID");
+    expect(() => readStripeSandboxConfig({ STRIPE_SECRET_KEY: "sk_test_abc!", STRIPE_WEBHOOK_SECRET: SECRET })).toThrow("STRIPE_SECRET_KEY_INVALID");
   });
 });
 

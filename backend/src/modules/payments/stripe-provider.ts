@@ -18,7 +18,7 @@ export function readStripeSandboxConfig(source: { STRIPE_SECRET_KEY?: string; ST
   const secretKey = source.STRIPE_SECRET_KEY?.trim();
   if (!secretKey) return null;
   if (/^(sk|rk)_live_/.test(secretKey)) throw new Error('STRIPE_LIVE_KEYS_FORBIDDEN: only Stripe test-mode keys are allowed');
-  if (!/^sk_test_[A-Za-z0-9]+$/.test(secretKey)) throw new Error('STRIPE_SECRET_KEY_INVALID: a Stripe test-mode secret key (sk_test_...) is required');
+  if (!/^(sk|rk)_test_[A-Za-z0-9]+$/.test(secretKey)) throw new Error('STRIPE_SECRET_KEY_INVALID: a Stripe test-mode secret key (sk_test_... or rk_test_...) is required');
   const webhookSecret = source.STRIPE_WEBHOOK_SECRET?.trim();
   if (!webhookSecret) return null;
   return { secretKey, webhookSecret };
