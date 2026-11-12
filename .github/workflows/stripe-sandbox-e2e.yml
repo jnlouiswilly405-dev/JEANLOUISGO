@@ -82,9 +82,10 @@ jobs:
             echo "::error::STRIPE_TEST_SECRET_KEY must be a valid Stripe test-mode secret key. Refusing to run."
             exit 1
           fi
+          printf '::add-mask::%s\n' "$normalized_key"
+          printf 'STRIPE_SECRET_KEY=%s\n' "$normalized_key" >> "$GITHUB_ENV"
           echo "Key format check passed (test mode)."
       - name: Run Stripe sandbox E2E (test mode)
         env:
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
           STRIPE_SANDBOX_E2E: '1'
         run: npm run test:int --workspace backend -- stripe-sandbox-e2e --reporter=verbose

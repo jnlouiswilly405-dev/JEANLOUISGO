@@ -21,6 +21,9 @@ describe("Stripe sandbox E2E cannot run accidentally", () => {
     expect(t).toMatch(/environment: stripe-sandbox/);
     expect(t).toContain("normalized_key=");
     expect(t).toContain('[[ ! "$normalized_key" =~ ^(sk|rk)_test_[A-Za-z0-9]+$ ]]');
+    expect(t).toContain('printf \'STRIPE_SECRET_KEY=%s\\n\' "$normalized_key" >> "$GITHUB_ENV"');
+    expect(t).toContain('printf \'::add-mask::%s\\n\' "$normalized_key"');
+    expect(t).not.toContain('STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}');
     expect(t).not.toMatch(/sk_live|rk_live|pk_live/);
   });
 
