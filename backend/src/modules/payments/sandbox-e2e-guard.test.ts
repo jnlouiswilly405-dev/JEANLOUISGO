@@ -19,7 +19,7 @@ describe("Stripe sandbox E2E cannot run accidentally", () => {
     expect(t).toMatch(/^on:\s*\n\s+workflow_dispatch:/m);
     expect(t).not.toMatch(/^\s+(push|pull_request|schedule):/m);
     expect(t).toMatch(/environment: stripe-sandbox/);
-    expect(t).toMatch(/sk_test_\*\)/);
+    expect(t).toMatch(/sk_test_\*\|rk_test_\*\)/);
     expect(t).not.toMatch(/sk_live|rk_live|pk_live/);
   });
 
@@ -28,5 +28,6 @@ describe("Stripe sandbox E2E cannot run accidentally", () => {
     expect(t).toMatch(/STRIPE_SANDBOX_E2E === '1'/);
     expect(t).toMatch(/STRIPE_LIVE_KEYS_FORBIDDEN/);
     expect(t).toMatch(/describe\.skipIf\(!enabled\)/);
+    expect(t).toMatch(/\(sk\|rk\)_test_/);
   });
 });
