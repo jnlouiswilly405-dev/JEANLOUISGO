@@ -13,6 +13,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      defer_migration_019:
+        description: 'Leave migration 019 unapplied pending the historical ledger audit'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   backend-postgres:
@@ -50,7 +56,21 @@ jobs:
       - name: Apply base schema
         run: PGPASSWORD=multigo_test psql -h localhost -U multigo -d multigo_test -v ON_ERROR_STOP=1 -f database/schema.sql
       - name: Apply migrations in order
-        run: bash database/migrate.sh
+        env:
+          DEFER_MIGRATION_019: ${{ inputs.defer_migration_019 || 'false' }}
+        run: |
+          if [ "$DEFER_MIGRATION_019" = "true" ]; then
+            for migration in database/migrations/*.sql; do
+              name=$(basename "$migration")
+              if [ "$name" = "019_clearing_credit_unique.sql" ]; then
+                echo "Deferring $name until the authorized historical ledger audit is complete."
+                continue
+              fi
+              psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+            done
+          else
+            bash database/migrate.sh
+          fi
       - name: Static QA
         run: bash tests/final/static-qa.sh
       - name: Backend build
@@ -86,4 +106,4 @@ jobs:
       - name: Backend PostgreSQL integration tests
         env:
           DATABASE_URL: postgres://multigo:multigo_test@localhost:5432/multigo_test
-        run: npm run test:int --workspace backend
+        run: npm run test:int --workspace backend -- --no-file-parallelism --maxWorkers=1

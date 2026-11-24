@@ -129,7 +129,7 @@ describe('promo codes in order creation', () => {
     const admin = await createUser(pool, 'ADMIN');
     const first = await place(c.token, p.code);
     expect(first.status).toBe(201);
-    expect((await api(base, 'POST', `/api/orders/${first.body.id}/status`, { token: admin.token, body: { status: 'CANCELLED' } })).status).toBe(200);
+    expect((await api(base, 'POST', `/api/orders/${first.body.id}/cancel`, { token: admin.token, body: {} })).status).toBe(200);
     expect(await used(p.id)).toBe(0);
     expect(await redemptions(p.id)).toBe(0);
     expect((await place(c.token, p.code)).status).toBe(201);

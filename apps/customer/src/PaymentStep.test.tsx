@@ -7,7 +7,7 @@ import { PaymentStep, isTestPublishableKey } from './pages/PaymentStep.js';
 const user = { id: 'u1', email: 'c@x.co', displayName: 'Cleo', role: 'CUSTOMER' };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 
-function fakeApi(paymentBody: unknown = { id: 'pay-1', order_id: 'o-1', provider: 'stripe', status: 'PENDING', amount_cents: 2700, clientSecret: 'pi_test_secret_abc' }) {
+function fakeApi(paymentBody: unknown = { id: 'pay-1', order_id: 'o-1', provider: 'stripe', status: 'PENDING', amount_cents: 2700, clientSecret: 'pi_test_secret_abc' }, recoveryBody?: unknown) {
   const calls: { method: string; path: string; body?: any }[] = [];
   const impl = vi.fn(async (url: string, init: RequestInit = {}) => {
     const path = new URL(url).pathname;
@@ -15,6 +15,7 @@ function fakeApi(paymentBody: unknown = { id: 'pay-1', order_id: 'o-1', provider
     calls.push({ method, path, body: init.body ? JSON.parse(init.body as string) : undefined });
     const key = `${method} ${path}`;
     if (key === 'POST /api/auth/login') return json(200, { user, token: 'tok' });
+    if (key === 'GET /api/payments/orders/o-1/recover') return recoveryBody === undefined ? json(404, { error: 'PAYMENT_ATTEMPT_NOT_FOUND' }) : json(200, recoveryBody);
     if (key === 'POST /api/payments') return json(201, paymentBody);
     return json(404, { error: `no route ${key}` });
   });
@@ -65,6 +66,17 @@ describe('PaymentStep (sandbox)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Pay by card' }));
     await screen.findByRole('button', { name: 'Confirm payment' });
     expect(api.calls.filter((c) => c.path === '/api/payments')[1].body.idempotencyKey).toBe(first);
+  });
+
+  it('recovers the server-held pending intent without creating a new payment on another device', async () => {
+    const api = fakeApi(undefined, { id: 'pay-existing', order_id: 'o-1', provider: 'stripe', status: 'PENDING', amount_cents: 2700, clientSecret: 'pi_existing_secret' });
+    const s = fakeStripe();
+    await mountStep(api, { publishableKey: 'pk_test_abc', loadStripeImpl: s.load });
+    await userEvent.click(screen.getByRole('button', { name: 'Pay by card' }));
+    await screen.findByRole('button', { name: 'Confirm payment' });
+    expect(api.calls.some((c) => c.path === '/api/payments/orders/o-1/recover')).toBe(true);
+    expect(api.calls.filter((c) => c.path === '/api/payments')).toHaveLength(0);
+    expect(s.stripe.elements).toHaveBeenCalledWith({ clientSecret: 'pi_existing_secret' });
   });
 
   it('only rotates the saved attempt after the server reports it failed', async () => {

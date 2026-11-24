@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../../middleware/auth.js';
-import { createPayment, handleWebhook, refundPayment } from './payment.service.js';
+import { createPayment, handleWebhook, recoverPaymentForOrder, refundPayment } from './payment.service.js';
 import { getStripeProvider } from './provider.js';
 import { mapStripeEvent } from './stripe-provider.js';
 
@@ -35,6 +35,17 @@ const refundSchema = z.object({ amountCents:z.number().int().positive() });
 paymentRouter.post('/', requireAuth, requireRole('CUSTOMER','ADMIN'), async (req,res) => {
   const parsed=schema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:parsed.error.issues});
   try{return res.status(201).json(await createPayment(parsed.data, req.user!));}catch(e){const forbidden=e instanceof Error && e.message==='ORDER_FORBIDDEN';return res.status(forbidden?403:409).json({error:e instanceof Error?e.message:'Payment failed'});}
+});
+
+paymentRouter.get('/orders/:orderId/recover', requireAuth, requireRole('CUSTOMER','ADMIN'), async (req,res) => {
+  const parsed=z.string().uuid().safeParse(req.params.orderId);
+  if(!parsed.success)return res.status(400).json({error:'Invalid order ID'});
+  try{return res.json(await recoverPaymentForOrder(parsed.data, req.user!));}
+  catch(e) {
+    const message=e instanceof Error?e.message:'Payment recovery failed';
+    const status=message==='ORDER_FORBIDDEN'?403:message==='PAYMENT_ATTEMPT_NOT_FOUND'?404:409;
+    return res.status(status).json({error:message});
+  }
 });
 
 paymentRouter.post('/webhook/:provider', async (req,res) => {

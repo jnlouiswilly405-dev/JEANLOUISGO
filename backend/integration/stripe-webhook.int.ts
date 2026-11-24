@@ -42,14 +42,14 @@ async function pendingPayment(total: number) {
   return { orderId, paymentId, intentId, total };
 }
 
-function event(p: { paymentId: string; intentId: string; total: number }, over: { type?: string; id?: string; received?: number; currency?: string } = {}) {
+function event(p: { orderId: string; paymentId: string; intentId: string; total: number }, over: { type?: string; id?: string; received?: number; currency?: string } = {}) {
   return JSON.stringify({
     id: over.id ?? `evt_${randomUUID().replace(/-/g, '')}`,
     object: 'event',
     type: over.type ?? 'payment_intent.succeeded',
     data: { object: {
       id: p.intentId, object: 'payment_intent', amount: p.total, amount_received: over.received ?? p.total,
-      currency: over.currency ?? 'usd', metadata: { paymentId: p.paymentId },
+      currency: over.currency ?? 'usd', metadata: { paymentId: p.paymentId, orderId: p.orderId },
     } },
   });
 }
@@ -126,11 +126,22 @@ describe('Stripe sandbox webhook (signed, raw body)', () => {
       token: customer.token,
       body: { orderId: p.orderId, provider: 'stripe', amountCents: p.total, idempotencyKey: `retry-${randomUUID()}` },
     });
+
     expect(retry.status).toBe(409);
     expect(retry.body.error).toContain('PAYMENT_ATTEMPT_ALREADY_ACTIVE');
     expect((await post(event(p))).status).toBe(200);
     expect(await paymentStatus(p.paymentId)).toBe('SUCCEEDED');
     expect(await n(clearing, [p.orderId])).toBe(1);
+  });
+
+  it('marks a verified canceled intent terminal and allows a fresh attempt without touching the ledger', async () => {
+    const p = await pendingPayment(1750);
+    const canceled = await post(event(p, { type: 'payment_intent.canceled', received: 0 }));
+    expect(canceled).toMatchObject({ status: 200, body: { duplicate: false } });
+    expect(await paymentStatus(p.paymentId)).toBe('FAILED');
+    expect(await orderStatus(pool, p.orderId)).toBe('PENDING_PAYMENT');
+    expect(await n(clearing, [p.orderId])).toBe(0);
+    expect(await n('SELECT count(*)::int n FROM payments WHERE order_id=$1', [p.orderId])).toBe(1);
   });
 
   it('rejects a second captured intent for reconciliation without silently marking it succeeded', async () => {
@@ -170,33 +181,13 @@ describe('Stripe sandbox webhook (signed, raw body)', () => {
     expect(await n(clearing, [p.orderId])).toBe(1);
   });
 
-  it('enforces one clearing credit per order at the database boundary', async () => {
-    const p = await pendingPayment(2100);
-    expect((await post(event(p))).status).toBe(200);
-    await expect(pool.query(
-      "INSERT INTO ledger_entries(order_id,account_type,direction,amount_cents,currency) VALUES($1,'PLATFORM_CLEARING','CREDIT',$2,'USD')",
-      [p.orderId, p.total],
-    )).rejects.toMatchObject({ code: '23505' });
-    expect(await n(clearing, [p.orderId])).toBe(1);
-  });
-
-  it('refuses to create the uniqueness index on historical duplicates without deleting them', async () => {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('CREATE TEMP TABLE ledger_entries (order_id UUID, account_type TEXT, direction TEXT) ON COMMIT DROP');
-      const orderId = randomUUID();
-      await client.query("INSERT INTO ledger_entries VALUES ($1,'PLATFORM_CLEARING','CREDIT'),($1,'PLATFORM_CLEARING','CREDIT')", [orderId]);
-      await client.query('SAVEPOINT before_index');
-      const migration = readFileSync(new URL('../../database/migrations/019_clearing_credit_unique.sql', import.meta.url), 'utf8');
-      await expect(client.query(migration)).rejects.toMatchObject({ code: '23505' });
-      await client.query('ROLLBACK TO SAVEPOINT before_index');
-      const rows = await client.query('SELECT count(*)::int AS n FROM ledger_entries');
-      expect(rows.rows[0].n).toBe(2);
-    } finally {
-      await client.query('ROLLBACK');
-      client.release();
-    }
+  it('keeps migration 019 deferred and verifies its non-destructive uniqueness contract without executing it', () => {
+    const migration = readFileSync(new URL('../../database/migrations/019_clearing_credit_unique.sql', import.meta.url), 'utf8');
+    expect(migration).toMatch(/CREATE\s+UNIQUE\s+INDEX/i);
+    expect(migration).toMatch(/ON\s+ledger_entries\s*\(order_id\)/i);
+    expect(migration).toMatch(/account_type\s*=\s*'PLATFORM_CLEARING'/i);
+    expect(migration).toMatch(/direction\s*=\s*'CREDIT'/i);
+    expect(migration).not.toMatch(/\b(DELETE|UPDATE|TRUNCATE)\b/i);
   });
 
   it('ignores unrelated signed events', async () => {

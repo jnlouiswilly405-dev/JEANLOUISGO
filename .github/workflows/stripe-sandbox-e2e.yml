@@ -10,6 +10,11 @@ on:
         description: 'Type SANDBOX to confirm this run uses a Stripe TEST key only'
         required: true
         type: string
+      defer_migration_019:
+        description: 'Leave migration 019 unapplied pending the historical ledger audit'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -68,7 +73,21 @@ jobs:
       - name: Apply base schema
         run: PGPASSWORD=multigo_test psql -h localhost -U multigo -d multigo_test -v ON_ERROR_STOP=1 -f database/schema.sql
       - name: Apply migrations in order
-        run: bash database/migrate.sh
+        env:
+          DEFER_MIGRATION_019: ${{ inputs.defer_migration_019 || 'false' }}
+        run: |
+          if [ "$DEFER_MIGRATION_019" = "true" ]; then
+            for migration in database/migrations/*.sql; do
+              name=$(basename "$migration")
+              if [ "$name" = "019_clearing_credit_unique.sql" ]; then
+                echo "Deferring $name until the authorized historical ledger audit is complete."
+                continue
+              fi
+              psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+            done
+          else
+            bash database/migrate.sh
+          fi
       - name: Verify the key is a Stripe TEST key (value is never printed)
         env:
           STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
@@ -85,4 +104,4 @@ jobs:
         env:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
           STRIPE_SANDBOX_E2E: '1'
-        run: npm run test:int --workspace backend -- stripe-sandbox-e2e --reporter=verbose
+        run: npm run test:int --workspace backend -- stripe-sandbox-e2e --no-file-parallelism --maxWorkers=1 --reporter=verbose

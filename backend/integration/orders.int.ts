@@ -180,19 +180,35 @@ describe('order status transitions', () => {
     const pool = await getPool();
     const assignedDriver = await createUser(pool, 'DRIVER');
     const profile = await createDriverProfile(pool, assignedDriver.id, 'BUSY');
-    const id = await insertOrder(pool, { customerId: customerA.id, merchantId, status: 'IN_TRANSIT', driverProfileId: profile });
+    const id = await insertOrder(pool, { customerId: customerA.id, merchantId, status: 'IN_TRANSIT', driverProfileId: profile, paid: true });
     expect((await api(base, 'POST', `/api/orders/${id}/status`, { token: merchantOwner.token, body: { status: 'DELIVERED' } })).status).toBe(403);
     expect((await api(base, 'POST', `/api/orders/${id}/status`, { token: otherDriver.token, body: { status: 'DELIVERED' } })).status).toBe(403);
     expect(await orderStatus(pool, id)).toBe('IN_TRANSIT');
   });
 
-  it('allows the assigned driver to deliver', async () => {
+  it('requires the delivery endpoint for driver delivery; the generic status route cannot bypass events', async () => {
     const pool = await getPool();
     const user = await createUser(pool, 'DRIVER');
     const profile = await createDriverProfile(pool, user.id, 'BUSY');
-    const id = await insertOrder(pool, { customerId: customerA.id, merchantId, status: 'IN_TRANSIT', driverProfileId: profile });
-    const res = await api(base, 'POST', `/api/orders/${id}/status`, { token: user.token, body: { status: 'DELIVERED' } });
+    const id = await insertOrder(pool, { customerId: customerA.id, merchantId, status: 'IN_TRANSIT', driverProfileId: profile, paid: true });
+    const bypass = await api(base, 'POST', `/api/orders/${id}/status`, { token: user.token, body: { status: 'DELIVERED' } });
+    expect(bypass.status).toBe(409);
+    expect(await orderStatus(pool, id)).toBe('IN_TRANSIT');
+    const res = await api(base, 'POST', `/api/orders/${id}/delivery`, { token: user.token, body: { action: 'DELIVERED' } });
     expect(res.status).toBe(200);
     expect(await orderStatus(pool, id)).toBe('DELIVERED');
+  });
+
+  it('prevents administrative payment bypass and supports owner-only unpaid cancellation', async () => {
+    const pool = await getPool();
+    const id = await insertOrder(pool, { customerId: customerA.id, merchantId, status: 'PENDING_PAYMENT' });
+    const bypass = await api(base, 'POST', `/api/orders/${id}/status`, { token: admin.token, body: { status: 'PAID' } });
+    expect(bypass.status).toBe(409);
+    expect(await orderStatus(pool, id)).toBe('PENDING_PAYMENT');
+    expect((await api(base, 'POST', `/api/orders/${id}/cancel`, { token: customerB.token, body: {} })).status).toBe(403);
+    const canceled = await api(base, 'POST', `/api/orders/${id}/cancel`, { token: customerA.token, body: {} });
+    expect(canceled.status).toBe(200);
+    expect(canceled.body.status).toBe('CANCELLED');
+    expect((await api(base, 'POST', `/api/orders/${id}/cancel`, { token: customerA.token, body: {} })).body.status).toBe('CANCELLED');
   });
 });

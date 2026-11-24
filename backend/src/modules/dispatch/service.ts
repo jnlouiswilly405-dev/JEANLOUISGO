@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { notifyDriverAssigned, notifyOrderStatus } from "../notifications/service.js";
+import { assertPaymentClearedForOrder } from "../payments/guards.js";
 
 export async function offerOrderToDriver(pool: Pool, orderId: string, driverId: string) {
   const client = await pool.connect();
@@ -12,6 +13,7 @@ export async function offerOrderToDriver(pool: Pool, orderId: string, driverId: 
     if (order.rows[0].status !== "READY") {
       throw new Error("ORDER_NOT_DISPATCHABLE");
     }
+    await assertPaymentClearedForOrder(client, orderId);
 
     const driver = await client.query(
       `SELECT id, status FROM driver_profiles WHERE id=$1 FOR UPDATE`, [driverId]
@@ -66,6 +68,7 @@ export async function acceptAssignment(pool: Pool, assignmentId: string, driverI
         rows[0].assigned_driver_profile_id !== driverId) {
       throw new Error("ASSIGNMENT_ORDER_MISMATCH");
     }
+    await assertPaymentClearedForOrder(client, rows[0].order_id);
 
     const result = await client.query(
       `UPDATE dispatch_assignments SET status='ACCEPTED', responded_at=now()

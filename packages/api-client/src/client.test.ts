@@ -66,6 +66,18 @@ describe('api client', () => {
     expect(JSON.parse((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).idempotencyKey).toHaveLength(20);
   });
 
+  it('recovers a pending payment by order and cancels an order through guarded endpoints', async () => {
+    const row = { id: 'p1', order_id: 'o1', provider: 'stripe', status: 'PENDING', amount_cents: 500, clientSecret: 'pi_x_secret_y' };
+    const recovery = setup(reply(200, row));
+    expect((await recovery.client.payments.recover('o1')).clientSecret).toBe('pi_x_secret_y');
+    expect((recovery.fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[0]).toBe('http://api.test/api/payments/orders/o1/recover');
+    const order = { id: 'o1', customerId: 'c1', merchantId: 'm1', items: [], subtotalCents: 500, deliveryFeeCents: 0, totalCents: 500, currency: 'USD', status: 'CANCELLED', createdAt: '2026-01-01T00:00:00Z' };
+    const cancellation = setup(reply(200, order));
+    expect((await cancellation.client.orders.cancel('o1')).status).toBe('CANCELLED');
+    expect((cancellation.fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[0]).toBe('http://api.test/api/orders/o1/cancel');
+    expect((cancellation.fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe('POST');
+  });
+
   it('exposes no refund, payout or settlement/earnings creation calls', () => {
     const { client } = setup(reply(200, {}));
     const keys = JSON.stringify(Object.entries(client).map(([k, v]) => [k, Object.keys(v)]));

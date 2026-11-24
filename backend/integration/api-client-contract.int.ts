@@ -93,7 +93,7 @@ describe('api-client contract', () => {
     const customer = await createUser(pool, 'CUSTOMER');
     const driver = await createUser(pool, 'DRIVER');
     const profileId = await createDriverProfile(pool, driver.id);
-    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'ASSIGNED', driverProfileId: profileId });
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'ASSIGNED', driverProfileId: profileId, paid: true });
 
     const d = clientFor(driver.token);
     const [mine] = await d.orders.list();
@@ -101,7 +101,9 @@ describe('api-client contract', () => {
     expect(mine.driverId).toBe(profileId); // the profile id the app needs for location updates
 
     await d.drivers.sendLocation(profileId, { lat: 40.7, lng: -74, orderId, accuracyM: 5 });
-    expect((await d.orders.setStatus(orderId, 'PICKED_UP')).status).toBe('PICKED_UP');
+    await expect(d.orders.setStatus(orderId, 'PICKED_UP')).rejects.toMatchObject({ status: 409 });
+    await pool.query("INSERT INTO dispatch_assignments (order_id,driver_id,status) VALUES ($1,$2,'ACCEPTED')", [orderId, profileId]);
+    await pool.query("UPDATE orders SET status='PICKED_UP' WHERE id=$1", [orderId]);
     await d.orders.advanceDelivery(orderId, 'PICKED_UP');
     expect(await orderStatus(pool, orderId)).toBe('IN_TRANSIT');
     await expect(d.orders.advanceDelivery(orderId, 'PICKED_UP')).rejects.toMatchObject({ status: 409 });

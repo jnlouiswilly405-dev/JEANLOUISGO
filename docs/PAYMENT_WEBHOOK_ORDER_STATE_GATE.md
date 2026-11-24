@@ -32,7 +32,31 @@ clearing credit is rejected with `PAYMENT_LEDGER_RECONCILIATION_REQUIRED`; it
 requires manual investigation of the real provider capture and must not be
 treated as proof that no money moved.
 
+Signed `payment_intent.canceled` events verify both payment and order metadata,
+provider reference, amount and currency, then close only a still-pending attempt
+as `FAILED`; they never move the order or create a ledger entry. A customer may
+cancel their own unpaid `PENDING_PAYMENT` order. If a Stripe intent is active,
+the backend cancels and verifies that exact intent before changing order state.
+An unresolved intent without a reference is blocked for reconciliation.
+Captured/fulfilled orders cannot be canceled because refunds are disabled.
+Payment, assignment and delivery states cannot be set through the generic order
+status endpoint; dispatch and delivery require one matching successful payment
+and clearing credit.
+
+The authenticated `GET /api/payments/orders/:orderId/recover` returns the
+existing customer's actionable pending intent, checking provider ID, metadata,
+amount, currency and Stripe status. It allows a customer who has signed in on
+another device or reopened the application to resume without a client-held key.
+When the provider reference was never recorded, the backend retries creation
+with its saved Stripe idempotency key only during the first 23 hours. Older
+ambiguous attempts are stopped for manual reconciliation; the client secret is
+never persisted.
+
 Migration 019 enforces one platform-clearing credit per order without deleting
 or changing historical entries. If duplicates exist it fails: back up the
 database, investigate and reconcile them with an authorized financial operator
 before retrying. It does not link credits to individual payments.
+
+`HISTORICAL_LEDGER_AUDIT_019.md` describes an authorized, read-only snapshot
+audit required before migration 019. No production/historical audit was run and
+the migration remains unapplied by this task.

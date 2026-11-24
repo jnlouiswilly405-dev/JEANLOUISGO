@@ -26,7 +26,7 @@ afterAll(async () => {
 async function pickedUpOrder() {
   const driver = await createUser(pool, 'DRIVER');
   const profileId = await createDriverProfile(pool, driver.id, 'BUSY');
-  const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'PICKED_UP', driverProfileId: profileId });
+  const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'PICKED_UP', driverProfileId: profileId, paid: true });
   createdOrders.push(orderId);
   await pool.query("INSERT INTO dispatch_assignments (order_id,driver_id,status) VALUES ($1,$2,'ACCEPTED')", [orderId, profileId]);
   return { driver, profileId, orderId };
@@ -54,8 +54,8 @@ describe('delivery state machine', () => {
     expect(rows[0].payload).toMatchObject({ orderId, driverProfileId: profileId, merchantId });
     expect((await pool.query('SELECT status FROM driver_profiles WHERE id=$1', [profileId])).rows[0].status).toBe('AVAILABLE');
     expect((await pool.query('SELECT status FROM dispatch_assignments WHERE order_id=$1', [orderId])).rows[0].status).toBe('COMPLETED');
-    // Settlement is only requested here; nothing is paid or ledgered.
-    expect((await pool.query('SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1', [orderId])).rows[0].n).toBe(0);
+    // Delivery requests settlement but does not add financial ledger entries.
+    expect((await pool.query('SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1', [orderId])).rows[0].n).toBe(1);
   });
 
   it('cannot deliver twice and cannot duplicate the outbox row', async () => {
@@ -81,6 +81,16 @@ describe('delivery state machine', () => {
     await expect(advanceDelivery(pool, orderId, stranger.id, 'PICKED_UP')).rejects.toThrow('ORDER_NOT_ASSIGNED_TO_DRIVER');
     const noProfile = await createUser(pool, 'DRIVER');
     await expect(advanceDelivery(pool, orderId, noProfile.id, 'PICKED_UP')).rejects.toThrow('DRIVER_PROFILE_NOT_FOUND');
+  });
+
+  it('refuses pickup when payment and clearing ledger do not reconcile', async () => {
+    const driver = await createUser(pool, 'DRIVER');
+    const profileId = await createDriverProfile(pool, driver.id, 'BUSY');
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'PICKED_UP', driverProfileId: profileId });
+    await pool.query("INSERT INTO dispatch_assignments (order_id,driver_id,status) VALUES ($1,$2,'ACCEPTED')", [orderId, profileId]);
+    await expect(advanceDelivery(pool, orderId, driver.id, 'PICKED_UP')).rejects.toThrow('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+    expect((await pool.query('SELECT status FROM orders WHERE id=$1', [orderId])).rows[0].status).toBe('PICKED_UP');
+    expect((await pool.query('SELECT count(*)::int n FROM delivery_events WHERE order_id=$1', [orderId])).rows[0].n).toBe(0);
   });
 });
 

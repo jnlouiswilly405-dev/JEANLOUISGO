@@ -18,7 +18,7 @@ const driverStatus = async (id: string) => (await pool.query('SELECT status FROM
 
 describe('dispatch offers', () => {
   it('assigns a READY order to an AVAILABLE driver and marks the driver BUSY', async () => {
-    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY' });
+    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY', paid: true });
     const driverId = await newDriver();
     const a = await offerOrderToDriver(pool, orderId, driverId);
     expect(a.status).toBe('OFFERED');
@@ -29,13 +29,20 @@ describe('dispatch offers', () => {
   it('refuses orders that are not READY and drivers that are not AVAILABLE', async () => {
     const paid = await insertOrder(pool, { customerId, merchantId, status: 'PAID' });
     await expect(offerOrderToDriver(pool, paid, await newDriver())).rejects.toThrow('ORDER_NOT_DISPATCHABLE');
-    const ready = await insertOrder(pool, { customerId, merchantId, status: 'READY' });
+    const ready = await insertOrder(pool, { customerId, merchantId, status: 'READY', paid: true });
     await expect(offerOrderToDriver(pool, ready, await newDriver('OFFLINE'))).rejects.toThrow('DRIVER_NOT_AVAILABLE');
     expect(await orderStatus(pool, ready)).toBe('READY');
   });
 
+  it('refuses dispatch of a READY order without a reconciled successful payment', async () => {
+    const ready = await insertOrder(pool, { customerId, merchantId, status: 'READY' });
+    await expect(offerOrderToDriver(pool, ready, await newDriver())).rejects.toThrow('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+    expect(await orderStatus(pool, ready)).toBe('READY');
+    expect((await pool.query('SELECT count(*)::int n FROM dispatch_assignments WHERE order_id=$1', [ready])).rows[0].n).toBe(0);
+  });
+
   it('lets exactly one of several racing drivers win the same order', async () => {
-    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY' });
+    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY', paid: true });
     const drivers = await Promise.all([newDriver(), newDriver(), newDriver(), newDriver()]);
     const results = await Promise.allSettled(drivers.map((d) => offerOrderToDriver(pool, orderId, d)));
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
@@ -50,7 +57,7 @@ describe('dispatch offers', () => {
 
   it('never gives one driver two orders at once', async () => {
     const driverId = await newDriver();
-    const orders = await Promise.all([1, 2, 3].map(() => insertOrder(pool, { customerId, merchantId, status: 'READY' })));
+    const orders = await Promise.all([1, 2, 3].map(() => insertOrder(pool, { customerId, merchantId, status: 'READY', paid: true })));
     const results = await Promise.allSettled(orders.map((o) => offerOrderToDriver(pool, o, driverId)));
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const assigned = (await Promise.all(orders.map((o) => orderStatus(pool, o)))).filter((s) => s === 'ASSIGNED');
@@ -60,7 +67,7 @@ describe('dispatch offers', () => {
 
 describe('dispatch responses', () => {
   it('lets only the offered driver accept, which moves the order to PICKED_UP', async () => {
-    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY' });
+    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY', paid: true });
     const driverId = await newDriver();
     const intruder = await newDriver();
     const a = await offerOrderToDriver(pool, orderId, driverId);
@@ -72,7 +79,7 @@ describe('dispatch responses', () => {
   });
 
   it('reopens the order and frees the driver when an offer is rejected', async () => {
-    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY' });
+    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY', paid: true });
     const driverId = await newDriver();
     const a = await offerOrderToDriver(pool, orderId, driverId);
     await rejectAssignment(pool, a.id, driverId);
@@ -83,7 +90,7 @@ describe('dispatch responses', () => {
   });
 
   it('does not let a stale rejection free a driver that has since taken another offer', async () => {
-    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY' });
+    const orderId = await insertOrder(pool, { customerId, merchantId, status: 'READY', paid: true });
     const first = await newDriver();
     const second = await newDriver();
     const a1 = await offerOrderToDriver(pool, orderId, first);

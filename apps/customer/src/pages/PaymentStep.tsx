@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadStripe, type Stripe, type StripeElements } from '@stripe/stripe-js';
 import { ErrorBanner, useLocalization, useSession } from '@multigo/app-shell';
+import { ApiError } from '@multigo/api-client';
 
 type LoadStripe = (key: string) => Promise<Stripe | null>;
 
@@ -35,14 +36,20 @@ export function PaymentStep({ orderId, amountCents, onSubmitted, publishableKey 
     setBusy(true);
     setError(null);
     try {
-      const storageKey = `multigo.payment-attempt.${orderId}`;
-      let idempotencyKey = window.sessionStorage.getItem(storageKey);
-      if (!idempotencyKey) {
-        idempotencyKey = `order-${orderId}-${crypto.randomUUID()}`;
-        window.sessionStorage.setItem(storageKey, idempotencyKey);
+      let payment;
+      try {
+        payment = await client.payments.recover(orderId);
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 404) throw e;
+        const storageKey = `multigo.payment-attempt.${orderId}`;
+        let idempotencyKey = window.sessionStorage.getItem(storageKey);
+        if (!idempotencyKey) {
+          idempotencyKey = `order-${orderId}-${crypto.randomUUID()}`;
+          window.sessionStorage.setItem(storageKey, idempotencyKey);
+        }
+        payment = await client.payments.create({ orderId, provider: 'stripe', amountCents, idempotencyKey });
+        if (payment.status === 'FAILED') window.sessionStorage.removeItem(storageKey);
       }
-      const payment = await client.payments.create({ orderId, provider: 'stripe', amountCents, idempotencyKey });
-      if (payment.status === 'FAILED') window.sessionStorage.removeItem(storageKey);
       if (!payment.clientSecret) throw new Error(t('serverNoPaymentSession'));
       const s = await loadStripeImpl(publishableKey);
       if (!s) throw new Error(t('couldNotLoadPaymentLibrary'));

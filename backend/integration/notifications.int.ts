@@ -51,7 +51,7 @@ describe('server-side notification creation', () => {
     const customer = await createUser(pool, 'CUSTOMER');
     const driver = await createUser(pool, 'DRIVER');
     const profileId = await createDriverProfile(pool, driver.id);
-    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'READY' });
+    const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'READY', paid: true });
 
     await offerOrderToDriver(pool, orderId, profileId);
     expect((await notes(driver.token)).filter((n) => n.order_id === orderId).map((n) => n.event_type)).toEqual(['DRIVER_ASSIGNED']);

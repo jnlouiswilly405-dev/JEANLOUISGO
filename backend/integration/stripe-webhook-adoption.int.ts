@@ -45,10 +45,10 @@ async function unreferenced(total: number, idempotencyKey = `int-adopt-${randomU
 }
 const row = async (id: string) => (await pool.query('SELECT status,provider_reference FROM payments WHERE id=$1', [id])).rows[0] as { status: string; provider_reference: string | null };
 
-function event(p: { paymentId: string; total: number }, intentId: string, over: { type?: string; received?: number; currency?: string; id?: string } = {}) {
+function event(p: { orderId: string; paymentId: string; total: number }, intentId: string, over: { type?: string; received?: number; currency?: string; id?: string } = {}) {
   return JSON.stringify({
     id: over.id ?? `evt_${randomUUID().replace(/-/g, '')}`, object: 'event', type: over.type ?? 'payment_intent.succeeded',
-    data: { object: { id: intentId, object: 'payment_intent', amount: p.total, amount_received: over.received ?? p.total, currency: over.currency ?? 'usd', metadata: { paymentId: p.paymentId } } },
+    data: { object: { id: intentId, object: 'payment_intent', amount: p.total, amount_received: over.received ?? p.total, currency: over.currency ?? 'usd', metadata: { paymentId: p.paymentId, orderId: p.orderId } } },
   });
 }
 async function post(payload: string) {
@@ -137,7 +137,7 @@ describe('webhook reference adoption (early-arrival recovery)', () => {
     const paymentId = randomUUID();
     const own = intent();
     await pool.query("INSERT INTO payments(id,order_id,provider,provider_reference,amount_cents,status,idempotency_key) VALUES ($1,$2,'stripe',$3,900,'PENDING',$4)", [paymentId, orderId, own, `int-adopt-${randomUUID()}`]);
-    const res = await post(event({ paymentId, total: 900 }, intent()));
+    const res = await post(event({ orderId, paymentId, total: 900 }, intent()));
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('WEBHOOK_PROVIDER_REFERENCE_MISMATCH');
     expect(await row(paymentId)).toEqual({ status: 'PENDING', provider_reference: own });

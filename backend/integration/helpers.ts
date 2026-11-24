@@ -79,7 +79,7 @@ export async function createDriverProfile(pool: Pool, userId: string, status = '
 }
 
 export async function insertOrder(pool: Pool, o: {
-  customerId: string; merchantId: string; status?: string; totalCents?: number; driverProfileId?: string | null;
+  customerId: string; merchantId: string; status?: string; totalCents?: number; driverProfileId?: string | null; paid?: boolean;
 }): Promise<string> {
   const total = o.totalCents ?? 1000;
   const r = await pool.query(
@@ -87,6 +87,17 @@ export async function insertOrder(pool: Pool, o: {
      VALUES ($1,$2,$3,$4,0,$4,$5) RETURNING id`,
     [o.customerId, o.merchantId, o.status ?? 'PENDING_PAYMENT', total, o.driverProfileId ?? null],
   );
+  if (o.paid) {
+    const paymentId = randomUUID();
+    await pool.query(
+      "INSERT INTO payments(id,order_id,provider,provider_reference,amount_cents,status,idempotency_key) VALUES($1,$2,'mock',$3,$4,'SUCCEEDED',$5)",
+      [paymentId, r.rows[0].id, `mock_${paymentId}`, total, `test-paid-${paymentId}`],
+    );
+    await pool.query(
+      "INSERT INTO ledger_entries(order_id,account_type,direction,amount_cents,currency) VALUES($1,'PLATFORM_CLEARING','CREDIT',$2,'USD')",
+      [r.rows[0].id, total],
+    );
+  }
   return r.rows[0].id;
 }
 

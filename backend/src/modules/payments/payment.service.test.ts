@@ -57,6 +57,7 @@ describe('webhook event integrity', () => {
 
   it('accepts only the supported failure event and status pair', () => {
     expect(() => validatePaymentWebhookEvent('PAYMENT_FAILED', 'FAILED')).not.toThrow();
+    expect(() => validatePaymentWebhookEvent('PAYMENT_CANCELED', 'FAILED')).not.toThrow();
   });
 
   it('rejects a success event carrying a failed status', () => {

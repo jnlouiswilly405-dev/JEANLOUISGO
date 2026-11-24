@@ -24,6 +24,15 @@ function makePool(options: { failOutbox?: boolean } = {}) {
       if (sql.includes("FROM driver_profiles WHERE user_id=$1")) {
         return { rows: [{ id: "driver-profile-1" }], rowCount: 1 };
       }
+      if (sql.includes("SELECT total_cents,currency FROM orders")) {
+        return { rows: [{ total_cents: 1000, currency: "USD" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM payments WHERE order_id=$1")) {
+        return { rows: [{ amount_cents: 1000, status: "SUCCEEDED" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM ledger_entries WHERE order_id=$1")) {
+        return { rows: [{ amount_cents: 1000, currency: "USD" }], rowCount: 1 };
+      }
       if (sql.includes("INSERT INTO delivery_events")) {
         return { rows: [{ id: "delivery-event-1" }], rowCount: 1 };
       }

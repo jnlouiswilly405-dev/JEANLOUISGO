@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { notifyOrderStatus } from "../notifications/service.js";
+import { assertPaymentClearedForOrder } from "../payments/guards.js";
 
 const transitions: Record<string, { next: string; event: string }> = {
   PICKUP: { next: "IN_TRANSIT", event: "PICKED_UP" },
@@ -34,6 +35,7 @@ export async function advanceDelivery(
     const next = action === "PICKED_UP" ? "IN_TRANSIT" : "DELIVERED";
 
     if (current !== expected) throw new Error("INVALID_DELIVERY_TRANSITION");
+    await assertPaymentClearedForOrder(client, orderId);
 
     await client.query(
       `UPDATE orders SET status=$2 WHERE id=$1`,

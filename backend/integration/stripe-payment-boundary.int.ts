@@ -8,6 +8,8 @@ const fake = vi.hoisted(() => ({
   calls: [] as Input[],
   recoverCalls: [] as string[],
   recoverImpl: null as null | ((reference: string) => Promise<string>),
+  cancelCalls: [] as string[],
+  cancelImpl: null as null | ((reference: string) => Promise<void>),
   impl: null as null | ((input: Input) => Promise<{ provider: 'stripe'; providerReference: string; status: 'PENDING'; clientSecret?: string }>),
 }));
 
@@ -16,10 +18,16 @@ vi.mock('../src/modules/payments/provider.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/payments/provider.js')>();
   return {
     ...actual,
-    getStripeProvider: () => ({ recoverPayment: async (input: { providerReference: string }) => {
-      fake.recoverCalls.push(input.providerReference);
-      return fake.recoverImpl!(input.providerReference);
-    } }),
+    getStripeProvider: () => ({
+      recoverPayment: async (input: { providerReference: string }) => {
+        fake.recoverCalls.push(input.providerReference);
+        return fake.recoverImpl!(input.providerReference);
+      },
+      cancelPayment: async (input: { providerReference: string }) => {
+        fake.cancelCalls.push(input.providerReference);
+        return fake.cancelImpl!(input.providerReference);
+      },
+    }),
     getProvider: (provider: 'mock' | 'stripe') => provider === 'stripe'
       ? { verifyWebhook: () => false, createPayment: async (input: Input) => { fake.calls.push(input); return fake.impl!(input); } }
       : actual.getProvider(provider),
@@ -63,7 +71,7 @@ async function rowsAreUnlocked(orderId: string): Promise<boolean> {
   } finally { await c.query('ROLLBACK'); c.release(); }
 }
 
-const reset = () => { fake.calls.length = 0; fake.recoverCalls.length = 0; fake.recoverImpl = async (reference) => `${reference}_secret`; fake.impl = async (input) => ({ provider: 'stripe', providerReference: intentFor(input), status: 'PENDING', clientSecret: `${intentFor(input)}_secret` }); };
+const reset = () => { fake.calls.length = 0; fake.recoverCalls.length = 0; fake.cancelCalls.length = 0; fake.cancelImpl = async () => {}; fake.recoverImpl = async (reference) => `${reference}_secret`; fake.impl = async (input) => ({ provider: 'stripe', providerReference: intentFor(input), status: 'PENDING', clientSecret: `${intentFor(input)}_secret` }); };
 
 describe('stripe PaymentIntent creation is outside the database transaction', () => {
   it('commits the PENDING attempt and releases row locks before the processor call, then records the reference', async () => {
@@ -134,6 +142,22 @@ describe('stripe PaymentIntent creation is outside the database transaction', ()
     expect(await paymentsFor(orderId)).toHaveLength(1);
   });
 
+  it('recovers the same pending intent through the authenticated order endpoint on another device', async () => {
+    reset();
+    const orderId = await newOrder(1480);
+    const started = await pay(customer.token, orderId, 1480, key());
+    const recovered = await api(base, 'GET', `/api/payments/orders/${orderId}/recover`, { token: customer.token });
+    expect(recovered.status).toBe(200);
+    expect(recovered.body).toMatchObject({
+      id: started.body.id,
+      provider_reference: started.body.provider_reference,
+      clientSecret: started.body.clientSecret,
+    });
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.recoverCalls).toEqual([started.body.provider_reference]);
+    expect((await api(base, 'GET', `/api/payments/orders/${orderId}/recover`, { token: other.token })).status).toBe(403);
+  });
+
   it('does not re-create an old unresolved intent after the processor idempotency window', async () => {
     reset();
     const orderId = await newOrder(1350);
@@ -146,6 +170,9 @@ describe('stripe PaymentIntent creation is outside the database transaction', ()
     expect(replay.status).toBe(409);
     expect(replay.body.error).toContain('PAYMENT_INTENT_RECONCILIATION_REQUIRED');
     expect(fake.calls).toHaveLength(0);
+    const recovery = await api(base, 'GET', `/api/payments/orders/${orderId}/recover`, { token: customer.token });
+    expect(recovery.status).toBe(409);
+    expect(recovery.body.error).toContain('PAYMENT_RECONCILIATION_REQUIRED');
   });
 
   it('does not return a recovered secret if the payment becomes terminal during retrieval', async () => {
@@ -161,6 +188,41 @@ describe('stripe PaymentIntent creation is outside the database transaction', ()
     expect(replay.status).toBe(409);
     expect(replay.body.error).toContain('PAYMENT_INTENT_NOT_ACTIONABLE');
     expect(replay.body.clientSecret).toBeUndefined();
+  });
+
+  it('cancels the verified sandbox intent before canceling its unpaid order', async () => {
+    reset();
+    const orderId = await newOrder(1550);
+    const idempotencyKey = key();
+    const started = await pay(customer.token, orderId, 1550, idempotencyKey);
+    const response = await api(base, 'POST', `/api/orders/${orderId}/cancel`, { token: customer.token, body: {} });
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('CANCELLED');
+    expect(fake.cancelCalls).toEqual([started.body.provider_reference]);
+    expect(await paymentsFor(orderId)).toEqual([expect.objectContaining({ status: 'FAILED' })]);
+    expect((await pool.query('SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1', [orderId])).rows[0].n).toBe(0);
+  });
+
+  it('does not cancel an unresolved or paid order and checks customer ownership', async () => {
+    reset();
+    const unresolvedOrder = await newOrder(1560);
+    fake.impl = async () => { throw Object.assign(new Error('socket hang up'), { type: 'StripeConnectionError' }); };
+    await pay(customer.token, unresolvedOrder, 1560, key());
+    const unresolved = await api(base, 'POST', `/api/orders/${unresolvedOrder}/cancel`, { token: customer.token, body: {} });
+    expect(unresolved.status).toBe(409);
+    expect(unresolved.body.error).toContain('PAYMENT_RECONCILIATION_REQUIRED');
+    expect(fake.cancelCalls).toHaveLength(0);
+
+    reset();
+    const paidOrder = await newOrder(1570);
+    await pay(customer.token, paidOrder, 1570, key());
+    await pool.query("UPDATE payments SET status='SUCCEEDED' WHERE order_id=$1", [paidOrder]);
+    await pool.query("UPDATE orders SET status='PAID' WHERE id=$1", [paidOrder]);
+    const paid = await api(base, 'POST', `/api/orders/${paidOrder}/cancel`, { token: customer.token, body: {} });
+    expect(paid.status).toBe(409);
+    expect(paid.body.error).toContain('ORDER_CANCELLATION_REQUIRES_REFUND');
+    const forbidden = await api(base, 'POST', `/api/orders/${paidOrder}/cancel`, { token: other.token, body: {} });
+    expect(forbidden.status).toBe(403);
   });
 
   it('concurrent requests with one key create a single payment row and one processor intent', async () => {

@@ -82,11 +82,13 @@ export function createApiClient(opts: ApiClientOptions) {
       get: (id: string) => request('GET', `/api/orders/${enc(id)}`, orderSchema),
       create: (input: { merchantId: string; items: { productId: string; quantity: number }[]; deliveryAddress: DeliveryAddress; deliveryFeeCents?: number; promoCode?: string }) => request('POST', '/api/orders', orderSchema, input),
       setStatus: (id: string, status: Exclude<OrderStatus, 'PENDING_PAYMENT'>) => request('POST', `/api/orders/${enc(id)}/status`, orderSchema, { status }),
+      cancel: (id: string) => request('POST', `/api/orders/${enc(id)}/cancel`, orderSchema, {}),
       tracking: (orderId: string) => request('GET', `/api/orders/${enc(orderId)}/tracking`, trackingEventSchema.array()),
       advanceDelivery: (orderId: string, action: 'PICKED_UP' | 'DELIVERED') => request('POST', `/api/orders/${enc(orderId)}/delivery`, looseRowSchema, { action }),
     },
     payments: {
       create: (input: { orderId: string; provider: 'mock' | 'stripe'; amountCents: number; idempotencyKey: string }) => request('POST', '/api/payments', paymentSchema, input),
+      recover: (orderId: string) => request('GET', `/api/payments/orders/${enc(orderId)}/recover`, paymentSchema),
     },
     drivers: {
       sendLocation: (driverId: string, input: { lat: number; lng: number; orderId?: string; accuracyM?: number }) => request('POST', `/api/drivers/${enc(driverId)}/location`, looseRowSchema, input),

@@ -89,6 +89,23 @@ describe("StripePaymentProvider.createPayment", () => {
     });
   });
 
+  describe("StripePaymentProvider.cancelPayment", () => {
+    it("only accepts cancellation of the matching PaymentIntent", async () => {
+      const { client } = fakeClient();
+      const intent = { id: 'pi_test_123', amount: 1999, currency: 'usd', status: 'requires_action', metadata: { paymentId: PAYMENT_ID, orderId: ORDER_ID }, client_secret: 'secret' };
+      const canceled = { ...intent, status: 'canceled' };
+      client.paymentIntents.retrieve = vi.fn(async () => intent);
+      client.paymentIntents.cancel = vi.fn(async () => canceled);
+      const provider = new StripePaymentProvider(client, SECRET);
+      const input = { paymentId: PAYMENT_ID, orderId: ORDER_ID, amountCents: 1999, currency: 'USD', providerReference: intent.id };
+      await expect(provider.cancelPayment(input)).resolves.toBeUndefined();
+      expect(client.paymentIntents.cancel).toHaveBeenCalledWith(intent.id);
+      await expect(provider.cancelPayment({ ...input, paymentId: ORDER_ID })).rejects.toThrow('PAYMENT_CANCELLATION_RECONCILIATION_REQUIRED');
+      intent.status = 'succeeded';
+      await expect(provider.cancelPayment(input)).rejects.toThrow('PAYMENT_INTENT_NOT_CANCELABLE');
+    });
+  });
+
   it("falls back to a payment-scoped idempotency key", async () => {
     const { client, intentsCreate } = fakeClient();
     await new StripePaymentProvider(client, SECRET).createPayment({ paymentId: PAYMENT_ID, orderId: ORDER_ID, amountCents: 100, currency: "usd" });
@@ -119,24 +136,30 @@ describe("mapStripeEvent", () => {
 
   it("maps a succeeded intent using the amount actually received", () => {
     const mapped = mapStripeEvent(parse(eventBody("payment_intent.succeeded", {
-      id: "pi_1", amount: 2000, amount_received: 1500, currency: "usd", metadata: { paymentId: PAYMENT_ID },
+        id: "pi_1", amount: 2000, amount_received: 1500, currency: "usd", metadata: { paymentId: PAYMENT_ID, orderId: ORDER_ID },
     })));
     expect(mapped).toEqual({
-      eventId: "evt_test_1", type: "PAYMENT_SUCCEEDED", status: "SUCCEEDED", paymentId: PAYMENT_ID,
+      eventId: "evt_test_1", type: "PAYMENT_SUCCEEDED", status: "SUCCEEDED", paymentId: PAYMENT_ID, orderId: ORDER_ID,
       amountCents: 1500, currency: "USD", providerReference: "pi_1",
     });
   });
 
   it("maps a failed intent", () => {
     const mapped = mapStripeEvent(parse(eventBody("payment_intent.payment_failed", {
-      id: "pi_2", amount: 700, amount_received: 0, currency: "eur", metadata: { paymentId: PAYMENT_ID },
+      id: "pi_2", amount: 700, amount_received: 0, currency: "eur", metadata: { paymentId: PAYMENT_ID, orderId: ORDER_ID },
     })));
     expect(mapped).toMatchObject({ type: "PAYMENT_FAILED", status: "FAILED", amountCents: 700, currency: "EUR" });
   });
 
+  it("maps a canceled intent to a terminal failed attempt", () => {
+    expect(mapStripeEvent(parse(eventBody("payment_intent.canceled", {
+      id: "pi_2", amount: 700, amount_received: 0, currency: "usd", metadata: { paymentId: PAYMENT_ID, orderId: ORDER_ID },
+    })))).toMatchObject({ type: "PAYMENT_CANCELED" });
+  });
+
   it("ignores unrelated events and rejects intents without a valid paymentId", () => {
     expect(mapStripeEvent(parse(eventBody("charge.refunded", { id: "ch_1" })))).toBeNull();
-    for (const metadata of [{}, { paymentId: "not-a-uuid" }]) {
+    for (const metadata of [{}, { paymentId: "not-a-uuid", orderId: ORDER_ID }, { paymentId: PAYMENT_ID }]) {
       expect(() => mapStripeEvent(parse(eventBody("payment_intent.succeeded", { id: "pi_3", amount: 1, amount_received: 1, currency: "usd", metadata })))).toThrow("WEBHOOK_PAYMENT_ID_MISSING");
     }
   });

@@ -3,6 +3,7 @@ import { pool, query } from '../../db/pool.js';
 import { notifyOrderStatus } from '../notifications/service.js';
 import { redeemPromoForOrder, releasePromoForOrder } from '../promos/service.js';
 import { requireActiveDeliveryArea } from '../service-areas/service.js';
+import { getStripeProvider } from '../payments/provider.js';
 import type { DeliveryAddress } from '../service-areas/types.js';
 import type { Order, OrderItem, OrderStatus } from './order.types.js';
 
@@ -80,6 +81,7 @@ export async function createOrder(input:{customerId:string;merchantId:string;ite
 
 export async function transitionOrder(id:string,next:OrderStatus):Promise<Order> {
   if (!pool) throw new Error('DATABASE_URL is not configured');
+  if (!['ACCEPTED','PREPARING','READY'].includes(next)) throw new Error('ORDER_TRANSITION_REQUIRES_GUARDED_ENDPOINT');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -87,7 +89,6 @@ export async function transitionOrder(id:string,next:OrderStatus):Promise<Order>
     if (!current.rowCount) throw new Error('Order not found');
     assertValidOrderTransition(current.rows[0].status, next);
     const result = await client.query('UPDATE orders SET status=$2 WHERE id=$1 RETURNING id,customer_id,merchant_id,COALESCE(driver_profile_id, driver_id) AS driver_id,status,subtotal_cents,delivery_fee_cents,total_cents,currency,created_at',[id,next]);
-    if (next === 'CANCELLED') await releasePromoForOrder(client, id);
     await client.query('COMMIT');
     return mapOrder(result.rows[0], []);
   } catch (e) { await client.query('ROLLBACK'); throw e; }
@@ -161,13 +162,13 @@ export async function transitionOrderForActor(id: string, next: OrderStatus, act
       allowed = row.driver_profile_user_id === actor.id || row.legacy_driver_user_id === actor.id;
     }
     if (!allowed) throw new Error('ORDER_FORBIDDEN');
+    if (!['ACCEPTED','PREPARING','READY'].includes(next)) throw new Error('ORDER_TRANSITION_REQUIRES_GUARDED_ENDPOINT');
     assertValidOrderTransition(row.status, next);
     const updated = await client.query(
       `UPDATE orders SET status=$2 WHERE id=$1
        RETURNING id,customer_id,merchant_id,COALESCE(driver_profile_id,driver_id) AS driver_id,
                  status,subtotal_cents,delivery_fee_cents,total_cents,currency,created_at`, [id,next]
     );
-    if (next === 'CANCELLED') await releasePromoForOrder(client, id);
     await notifyOrderStatus(client, id, next);
     await client.query('COMMIT');
     return mapOrder(updated.rows[0], []);
@@ -176,6 +177,99 @@ export async function transitionOrderForActor(id: string, next: OrderStatus, act
     throw e;
   } finally {
     client.release();
+  }
+}
+
+export async function cancelOrderForActor(id: string, actor: { id: string; role: string }): Promise<Order> {
+    if (!pool) throw new Error('DATABASE_URL is not configured');
+    let deferred: { paymentId: string; providerReference: string; orderId: string; amountCents: number; currency: string } | null = null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const order = await client.query<{ status: OrderStatus; customer_id: string; total_cents: number; currency: string }>(
+        'SELECT status,customer_id,total_cents,currency FROM orders WHERE id=$1 FOR UPDATE', [id],
+      );
+      if (!order.rowCount) throw new Error('Order not found');
+      if (actor.role !== 'ADMIN' && (actor.role !== 'CUSTOMER' || actor.id !== order.rows[0].customer_id)) {
+        throw new Error('ORDER_FORBIDDEN');
+      }
+      if (order.rows[0].status === 'CANCELLED') {
+        await client.query('COMMIT');
+        return (await getOrder(id))!;
+      }
+      if (order.rows[0].status !== 'PENDING_PAYMENT') throw new Error('ORDER_CANCELLATION_REQUIRES_REFUND');
+      const payments = await client.query<{ id: string; provider: string; provider_reference: string | null; amount_cents: number; status: string }>(
+        "SELECT id,provider,provider_reference,amount_cents,status FROM payments WHERE order_id=$1 ORDER BY created_at FOR UPDATE", [id],
+      );
+      const credits = await client.query(
+        "SELECT 1 FROM ledger_entries WHERE order_id=$1 AND account_type='PLATFORM_CLEARING' AND direction='CREDIT' LIMIT 1", [id],
+      );
+      if (credits.rowCount || payments.rows.some((payment) => payment.status === 'SUCCEEDED')) {
+        throw new Error('ORDER_CANCELLATION_REQUIRES_REFUND');
+      }
+      const pending = payments.rows.filter((payment) => payment.status === 'PENDING');
+      if (pending.length > 1) throw new Error('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+      if (pending.length) {
+        const payment = pending[0];
+        if (payment.provider !== 'stripe' || !payment.provider_reference) {
+          throw new Error('PAYMENT_RECONCILIATION_REQUIRED');
+        }
+        if (payment.amount_cents !== order.rows[0].total_cents) throw new Error('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+        deferred = {
+          paymentId: payment.id,
+          providerReference: payment.provider_reference,
+          orderId: id,
+          amountCents: payment.amount_cents,
+          currency: order.rows[0].currency,
+        };
+        await client.query('COMMIT');
+      } else {
+        await client.query("UPDATE orders SET status='CANCELLED' WHERE id=$1", [id]);
+        await releasePromoForOrder(client, id);
+        await notifyOrderStatus(client, id, 'CANCELLED');
+        await client.query('COMMIT');
+        return (await getOrder(id))!;
+      }
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    await getStripeProvider().cancelPayment(deferred!);
+    const finalize = await pool.connect();
+    try {
+      await finalize.query('BEGIN');
+      const order = await finalize.query<{ status: OrderStatus }>('SELECT status FROM orders WHERE id=$1 FOR UPDATE', [id]);
+      if (!order.rowCount) throw new Error('Order not found');
+      if (order.rows[0].status === 'CANCELLED') {
+        await finalize.query('COMMIT');
+        return (await getOrder(id))!;
+      }
+      if (order.rows[0].status !== 'PENDING_PAYMENT') throw new Error('ORDER_CANCELLATION_STATE_CHANGED');
+      const payment = await finalize.query<{ status: string; provider_reference: string | null }>(
+        'SELECT status,provider_reference FROM payments WHERE id=$1 FOR UPDATE', [deferred!.paymentId],
+      );
+      if (!payment.rowCount || payment.rows[0].provider_reference !== deferred!.providerReference ||
+          !['PENDING','FAILED'].includes(payment.rows[0].status)) {
+        throw new Error('PAYMENT_CANCELLATION_RECONCILIATION_REQUIRED');
+      }
+      const credits = await finalize.query(
+        "SELECT 1 FROM ledger_entries WHERE order_id=$1 AND account_type='PLATFORM_CLEARING' AND direction='CREDIT' LIMIT 1", [id],
+      );
+      if (credits.rowCount) throw new Error('PAYMENT_CANCELLATION_RECONCILIATION_REQUIRED');
+      await finalize.query("UPDATE payments SET status='FAILED' WHERE id=$1 AND status='PENDING'", [deferred!.paymentId]);
+      await finalize.query("UPDATE orders SET status='CANCELLED' WHERE id=$1", [id]);
+      await releasePromoForOrder(finalize, id);
+      await notifyOrderStatus(finalize, id, 'CANCELLED');
+      await finalize.query('COMMIT');
+      return (await getOrder(id))!;
+    } catch (e) {
+      await finalize.query('ROLLBACK');
+      throw e;
+    } finally {
+      finalize.release();
   }
 }
 

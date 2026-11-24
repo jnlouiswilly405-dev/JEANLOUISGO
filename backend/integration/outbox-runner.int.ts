@@ -20,7 +20,7 @@ const outboxRow = async (orderId: string) => (await pool.query('SELECT * FROM ev
 async function deliveredOrder(): Promise<string> {
   const driver = await createUser(pool, 'DRIVER');
   const profileId = await createDriverProfile(pool, driver.id, 'BUSY');
-  const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'PICKED_UP', driverProfileId: profileId });
+  const orderId = await insertOrder(pool, { customerId: customer.id, merchantId, status: 'PICKED_UP', driverProfileId: profileId, paid: true });
   createdOrders.push(orderId);
   await pool.query("INSERT INTO dispatch_assignments (order_id,driver_id,status) VALUES ($1,$2,'ACCEPTED')", [orderId, profileId]);
   await advanceDelivery(pool, orderId, driver.id, 'PICKED_UP');
@@ -75,9 +75,10 @@ describe('outbox runner with the fail-closed settlement handler', () => {
     expect(logs.some((l) => l.includes('PAYOUT_PROVIDER_CONFIRMATION_REQUIRED') && l.includes('[BLOCKED]'))).toBe(true);
 
     expect(await counts()).toEqual(before);
-    for (const t of ['driver_earnings', 'merchant_settlements', 'ledger_entries']) {
+    for (const t of ['driver_earnings', 'merchant_settlements']) {
       expect((await pool.query(`SELECT count(*)::int n FROM ${t} WHERE order_id=$1`, [orderId])).rows[0].n, t).toBe(0);
     }
+    expect((await pool.query("SELECT count(*)::int n FROM ledger_entries WHERE order_id=$1 AND account_type='PLATFORM_CLEARING' AND direction='CREDIT'", [orderId])).rows[0].n).toBe(1);
     expect((await pool.query('SELECT status FROM orders WHERE id=$1', [orderId])).rows[0].status).toBe('DELIVERED');
   });
 

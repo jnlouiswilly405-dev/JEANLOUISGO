@@ -84,6 +84,51 @@ export async function createPayment(input: { orderId: string; provider: PaymentP
 
 type DeferredProviderCall = { paymentId: string; orderId: string; amountCents: number; currency: string; idempotencyKey: string; providerReference?: string | null };
 
+export async function recoverPaymentForOrder(orderId: string, actor: { id: string; role: string }) {
+  if (!pool) throw new Error('DATABASE_URL is not configured');
+  const client = await pool.connect();
+  let deferred: DeferredProviderCall;
+  try {
+    await client.query('BEGIN');
+    const order = await client.query<{ customer_id: string; status: string; currency: string }>(
+      'SELECT customer_id,status,currency FROM orders WHERE id=$1 FOR UPDATE', [orderId],
+    );
+    if (!order.rowCount) throw new Error('Order not found');
+    assertPaymentOrderOwner(order.rows[0].customer_id, actor);
+    if (order.rows[0].status !== 'PENDING_PAYMENT') throw new Error('PAYMENT_RECOVERY_ORDER_NOT_PAYABLE');
+    const payments = await client.query<{
+      id: string; provider: string; amount_cents: number; status: string;
+      provider_reference: string | null; idempotency_key: string; fresh: boolean;
+    }>(
+      `SELECT id,provider,amount_cents,status,provider_reference,idempotency_key,
+              created_at > now() - interval '23 hours' AS fresh
+       FROM payments WHERE order_id=$1 AND status='PENDING' ORDER BY created_at DESC FOR UPDATE`,
+      [orderId],
+    );
+    if (!payments.rowCount) throw new Error('PAYMENT_ATTEMPT_NOT_FOUND');
+    if (payments.rowCount !== 1 || payments.rows[0].provider !== 'stripe') {
+      throw new Error('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+    }
+    const payment = payments.rows[0];
+    if (!payment.provider_reference && !payment.fresh) throw new Error('PAYMENT_RECONCILIATION_REQUIRED');
+    deferred = {
+      paymentId: payment.id,
+      orderId,
+      amountCents: payment.amount_cents,
+      currency: order.rows[0].currency,
+      idempotencyKey: payment.idempotency_key,
+      providerReference: payment.provider_reference,
+    };
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+  return completeStripePayment(pool, deferred!);
+}
+
 /** Errors after which the processor definitely did not create an intent, so the attempt can be closed. */
 export function isDefinitiveProviderError(error: unknown): boolean {
   const type = typeof error === 'object' && error !== null ? (error as { type?: unknown }).type : undefined;
@@ -134,7 +179,7 @@ export function validateNoActivePayment(existingStatus: string | null): void {
 
 export function validatePaymentWebhookEvent(type: string, status: 'SUCCEEDED'|'FAILED'): void {
   const expectedStatus = type === 'PAYMENT_SUCCEEDED' ? 'SUCCEEDED'
-    : type === 'PAYMENT_FAILED' ? 'FAILED' : null;
+    : type === 'PAYMENT_FAILED' || type === 'PAYMENT_CANCELED' ? 'FAILED' : null;
   if (!expectedStatus || expectedStatus !== status) {
     throw new Error('WEBHOOK_EVENT_STATUS_MISMATCH: unsupported event type or inconsistent status');
   }
@@ -163,17 +208,29 @@ export function validatePaymentWebhookDetails(input: { amountCents: number; curr
   }
 }
 
-export async function handleWebhook(input: { provider: PaymentProvider; eventId: string; type: string; paymentId: string; status: 'SUCCEEDED'|'FAILED'; amountCents: number; currency: string; providerReference: string; rawBody: string; signature: string }) {
+export async function handleWebhook(input: { provider: PaymentProvider; eventId: string; type: string; paymentId: string; orderId?: string; status: 'SUCCEEDED'|'FAILED'; amountCents: number; currency: string; providerReference: string; rawBody: string; signature: string }) {
   if (!pool) throw new Error('DATABASE_URL is not configured');
   validatePaymentWebhookEvent(input.type, input.status);
   if (!getProvider(input.provider).verifyWebhook(input.rawBody, input.signature)) throw new Error('Invalid webhook signature');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Lock the payment and order rows BEFORE inserting the event: the event row's foreign key takes a shared lock on
-    // the payment row, so inserting first made concurrent events for one payment deadlock on the later FOR UPDATE.
-    const payment = await client.query<{ order_id:string; amount_cents:number; status:string; currency:string; provider_reference:string|null; order_status:string }>('SELECT p.order_id,p.amount_cents,p.status,o.currency,p.provider_reference,o.status AS order_status FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND p.provider=$2 FOR UPDATE OF p,o',[input.paymentId,input.provider]);
+    // Take locks in order->payment sequence, matching checkout and cancellation; lock both before the
+    // payment_events foreign key checks its payment reference.
+    const paymentOrder = await client.query<{ order_id: string }>(
+      'SELECT order_id FROM payments WHERE id=$1 AND provider=$2', [input.paymentId, input.provider],
+    );
+    if (!paymentOrder.rowCount) throw new Error('Payment not found');
+    const lockedOrder = await client.query<{ status: string }>(
+      'SELECT status FROM orders WHERE id=$1 FOR UPDATE', [paymentOrder.rows[0].order_id],
+    );
+    if (!lockedOrder.rowCount) throw new Error('Order not found');
+    const payment = await client.query<{ order_id:string; amount_cents:number; status:string; currency:string; provider_reference:string|null; order_status:string }>(
+      'SELECT p.order_id,p.amount_cents,p.status,o.currency,p.provider_reference,o.status AS order_status FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND p.provider=$2 FOR UPDATE OF p',
+      [input.paymentId,input.provider],
+    );
     if (!payment.rowCount) throw new Error('Payment not found');
+    if (input.orderId && input.orderId !== payment.rows[0].order_id) throw new Error('WEBHOOK_ORDER_ID_MISMATCH');
     const inserted = await client.query(`INSERT INTO payment_events(event_id,provider,event_type,payment_id,payload) VALUES($1,$2,$3,$4,$5::jsonb) ON CONFLICT(provider,event_id) DO NOTHING RETURNING event_id`, [input.eventId,input.provider,input.type,input.paymentId,input.rawBody]);
     if (!inserted.rowCount) { await client.query('COMMIT'); return { duplicate: true }; }    // Early-arrival recovery: a verified SUCCEEDED Stripe event may supply the reference only for a PENDING stripe
     // payment that has none yet. Amount and currency are still compared below, and UNIQUE(provider_reference) plus the
@@ -207,6 +264,12 @@ export async function handleWebhook(input: { provider: PaymentProvider; eventId:
         await client.query("UPDATE payments SET status='SUCCEEDED' WHERE id=$1",[input.paymentId]);
         await client.query("UPDATE orders SET status='PAID' WHERE id=$1 AND status='PENDING_PAYMENT'",[current.order_id]);
         await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) SELECT p.order_id,'PLATFORM_CLEARING',NULL,'CREDIT',p.amount_cents,o.currency FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1`,[input.paymentId]);
+      }
+    } else if (input.type === 'PAYMENT_CANCELED' && input.provider === 'stripe') {
+      const currentStatus = payment.rows[0].status;
+      if (currentStatus === 'SUCCEEDED') throw new Error('PAYMENT_CANCELLATION_RECONCILIATION_REQUIRED');
+      if (currentStatus === 'PENDING') {
+        await client.query("UPDATE payments SET status='FAILED' WHERE id=$1 AND status='PENDING'", [input.paymentId]);
       }
     } else if (input.status === 'FAILED' && input.provider !== 'stripe') {
       await client.query("UPDATE payments SET status='FAILED' WHERE id=$1 AND status <> 'SUCCEEDED'",[input.paymentId]);
