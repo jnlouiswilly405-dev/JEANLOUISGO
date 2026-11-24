@@ -72,6 +72,23 @@ describe("StripePaymentProvider.createPayment", () => {
     );
   });
 
+  describe("StripePaymentProvider.recoverPayment", () => {
+    it("retrieves only a matching actionable intent and rejects mismatches", async () => {
+      const { client } = fakeClient();
+      const intent = { id: 'pi_test_123', amount: 1999, currency: 'usd', status: 'requires_payment_method', metadata: { paymentId: PAYMENT_ID, orderId: ORDER_ID }, client_secret: 'pi_secret' };
+      client.paymentIntents.retrieve = vi.fn(async () => intent);
+      const provider = new StripePaymentProvider(client, SECRET);
+      const input = { paymentId: PAYMENT_ID, orderId: ORDER_ID, amountCents: 1999, currency: 'USD', providerReference: intent.id };
+      expect(await provider.recoverPayment(input)).toBe('pi_secret');
+      expect(client.paymentIntents.retrieve).toHaveBeenCalledWith(intent.id);
+      await expect(provider.recoverPayment({ ...input, amountCents: 1 })).rejects.toThrow('PAYMENT_INTENT_RECONCILIATION_REQUIRED');
+      await expect(provider.recoverPayment({ ...input, orderId: 'other' })).rejects.toThrow('PAYMENT_INTENT_RECONCILIATION_REQUIRED');
+      await expect(provider.recoverPayment({ ...input, currency: 'EUR' })).rejects.toThrow('PAYMENT_INTENT_RECONCILIATION_REQUIRED');
+      intent.status = 'succeeded';
+      await expect(provider.recoverPayment(input)).rejects.toThrow('PAYMENT_INTENT_NOT_ACTIONABLE');
+    });
+  });
+
   it("falls back to a payment-scoped idempotency key", async () => {
     const { client, intentsCreate } = fakeClient();
     await new StripePaymentProvider(client, SECRET).createPayment({ paymentId: PAYMENT_ID, orderId: ORDER_ID, amountCents: 100, currency: "usd" });

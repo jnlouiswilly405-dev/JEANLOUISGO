@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../../db/pool.js';
 import type { PaymentProvider } from './payment.types.js';
-import { getProvider } from './provider.js';
+import { getProvider, getStripeProvider } from './provider.js';
 
 export async function createPayment(input: { orderId: string; provider: PaymentProvider; amountCents: number; idempotencyKey: string }, actor: { id: string; role: string }) {
   if (!pool) throw new Error('DATABASE_URL is not configured');
@@ -17,7 +17,7 @@ export async function createPayment(input: { orderId: string; provider: PaymentP
     const owner = await client.query<{ customer_id: string }>('SELECT customer_id FROM orders WHERE id=$1', [input.orderId]);
     if (!owner.rowCount) throw new Error('Order not found');
     assertPaymentOrderOwner(owner.rows[0].customer_id, actor);
-    const existing = await client.query<{id:string;order_id:string;provider:string;amount_cents:number;status:string;provider_reference:string|null}>('SELECT id,order_id,provider,amount_cents,status,provider_reference FROM payments WHERE idempotency_key=$1 FOR UPDATE', [input.idempotencyKey]);
+    const existing = await client.query<{id:string;order_id:string;provider:string;amount_cents:number;status:string;provider_reference:string|null;fresh:boolean}>("SELECT id,order_id,provider,amount_cents,status,provider_reference,created_at > now() - interval '23 hours' AS fresh FROM payments WHERE idempotency_key=$1 FOR UPDATE", [input.idempotencyKey]);
     if (existing.rowCount) {
       const prior = existing.rows[0];
       if (prior.order_id !== input.orderId || prior.provider !== input.provider || prior.amount_cents !== input.amountCents) {
@@ -25,13 +25,16 @@ export async function createPayment(input: { orderId: string; provider: PaymentP
       }
       // A processor call that never recorded its reference (crash or ambiguous network error) is resumed with the
       // same processor idempotency key, so the processor returns the original intent instead of creating another.
-      if (prior.provider === 'stripe' && prior.status === 'PENDING' && !prior.provider_reference) {
-        const currency = await client.query<{ currency: string }>('SELECT currency FROM orders WHERE id=$1', [input.orderId]);
-        deferred = { paymentId: prior.id, orderId: input.orderId, amountCents: prior.amount_cents, currency: currency.rows[0].currency, idempotencyKey: input.idempotencyKey };
+      if (prior.provider === 'stripe' && prior.status === 'PENDING') {
+        const order = await client.query<{ currency: string; status: string }>('SELECT currency,status FROM orders WHERE id=$1', [input.orderId]);
+        if (order.rows[0].status !== 'PENDING_PAYMENT') throw new Error('Order is not payable');
+        if (!prior.provider_reference && !prior.fresh) throw new Error('PAYMENT_INTENT_RECONCILIATION_REQUIRED');
+        deferred = { paymentId: prior.id, orderId: input.orderId, amountCents: prior.amount_cents, currency: order.rows[0].currency, idempotencyKey: input.idempotencyKey, providerReference: prior.provider_reference };
         await client.query('COMMIT');
       } else {
         await client.query('COMMIT');
-        return prior;
+        const { fresh: _fresh, ...payment } = prior;
+        return payment;
       }
     }
     if (!deferred) {
@@ -79,7 +82,7 @@ export async function createPayment(input: { orderId: string; provider: PaymentP
   return completeStripePayment(db, deferred!);
 }
 
-type DeferredProviderCall = { paymentId: string; orderId: string; amountCents: number; currency: string; idempotencyKey: string };
+type DeferredProviderCall = { paymentId: string; orderId: string; amountCents: number; currency: string; idempotencyKey: string; providerReference?: string | null };
 
 /** Errors after which the processor definitely did not create an intent, so the attempt can be closed. */
 export function isDefinitiveProviderError(error: unknown): boolean {
@@ -93,6 +96,15 @@ export function isDefinitiveProviderError(error: unknown): boolean {
  * leave it PENDING so the same idempotency key resumes it safely.
  */
 async function completeStripePayment(db: NonNullable<typeof pool>, call: DeferredProviderCall) {
+  if (call.providerReference) {
+    const clientSecret = await getStripeProvider().recoverPayment({ ...call, providerReference: call.providerReference });
+    const row = await db.query(
+      "SELECT p.id,p.order_id,p.provider,p.provider_reference,p.amount_cents,p.status,p.created_at FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND p.status='PENDING' AND p.provider_reference=$2 AND o.status='PENDING_PAYMENT'",
+      [call.paymentId, call.providerReference],
+    );
+    if (!row.rowCount) throw new Error('PAYMENT_INTENT_NOT_ACTIONABLE');
+    return { ...row.rows[0], clientSecret };
+  }
   let result;
   try {
     result = await getProvider('stripe').createPayment({ paymentId: call.paymentId, amountCents: call.amountCents, currency: call.currency, orderId: call.orderId, idempotencyKey: call.idempotencyKey });
@@ -103,8 +115,11 @@ async function completeStripePayment(db: NonNullable<typeof pool>, call: Deferre
     throw e;
   }
   await db.query("UPDATE payments SET provider_reference=$2 WHERE id=$1 AND status='PENDING' AND provider_reference IS NULL", [call.paymentId, result.providerReference]);
-  const row = await db.query('SELECT id,order_id,provider,provider_reference,amount_cents,status,created_at FROM payments WHERE id=$1', [call.paymentId]);
-  return result.clientSecret ? { ...row.rows[0], clientSecret: result.clientSecret } : row.rows[0];
+  const row = await db.query("SELECT p.id,p.order_id,p.provider,p.provider_reference,p.amount_cents,p.status,p.created_at,o.status AS order_status FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1", [call.paymentId]);
+  if (!row.rowCount || row.rows[0].provider_reference !== result.providerReference) throw new Error('PAYMENT_INTENT_RECONCILIATION_REQUIRED');
+  const { order_status, ...payment } = row.rows[0];
+  return result.clientSecret && payment.status === 'PENDING' && order_status === 'PENDING_PAYMENT'
+    ? { ...payment, clientSecret: result.clientSecret } : payment;
 }
 
 export function assertPaymentOrderOwner(orderCustomerId: string, actor: { id: string; role: string }): void {

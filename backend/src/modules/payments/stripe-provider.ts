@@ -3,7 +3,10 @@ import type { PaymentIntentResult, PaymentProviderAdapter } from './provider.js'
 
 /** Minimal slice of the Stripe client used here, so tests can inject a fake. */
 export interface StripeLikeClient {
-  paymentIntents: { create(params: Record<string, unknown>, options?: { idempotencyKey?: string }): Promise<{ id: string; client_secret?: string | null }> };
+  paymentIntents: {
+    create(params: Record<string, unknown>, options?: { idempotencyKey?: string }): Promise<{ id: string; client_secret?: string | null }>;
+    retrieve(id: string): Promise<{ id: string; amount: number; currency: string; status: string; metadata: Record<string, string>; client_secret: string | null }>;
+  };
   refunds: { create(params: Record<string, unknown>, options?: { idempotencyKey?: string }): Promise<{ id: string; status?: string | null }> };
   webhooks: { constructEvent(payload: string | Buffer, header: string, secret: string): Stripe.Event };
 }
@@ -39,6 +42,19 @@ export class StripePaymentProvider implements PaymentProviderAdapter {
     );
     // Always PENDING: only a verified webhook may mark the payment SUCCEEDED.
     return { provider: 'stripe', providerReference: intent.id, status: 'PENDING', clientSecret: intent.client_secret ?? undefined };
+  }
+
+  async recoverPayment(input: { paymentId: string; orderId: string; amountCents: number; currency: string; providerReference: string }): Promise<string> {
+    const intent = await this.client.paymentIntents.retrieve(input.providerReference);
+    if (intent.id !== input.providerReference || intent.amount !== input.amountCents ||
+        intent.currency.toUpperCase() !== input.currency.trim().toUpperCase() ||
+        intent.metadata.paymentId !== input.paymentId || intent.metadata.orderId !== input.orderId) {
+      throw new Error('PAYMENT_INTENT_RECONCILIATION_REQUIRED');
+    }
+    if (!['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(intent.status) || !intent.client_secret) {
+      throw new Error('PAYMENT_INTENT_NOT_ACTIONABLE');
+    }
+    return intent.client_secret;
   }
 
   verifyWebhook(rawBody: string, signature: string): boolean {

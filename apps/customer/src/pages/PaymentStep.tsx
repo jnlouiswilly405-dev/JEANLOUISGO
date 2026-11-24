@@ -22,7 +22,6 @@ export function PaymentStep({ orderId, amountCents, onSubmitted, publishableKey 
   const { client } = useSession();
   const { t } = useLocalization();
   const mountRef = useRef<HTMLDivElement>(null);
-  const idempotencyKey = useRef(`order-${orderId}-${crypto.randomUUID()}`);
   const [stripe, setStripe] = useState<Stripe | null>(null);
   const [elements, setElements] = useState<StripeElements | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +35,14 @@ export function PaymentStep({ orderId, amountCents, onSubmitted, publishableKey 
     setBusy(true);
     setError(null);
     try {
-      const payment = await client.payments.create({ orderId, provider: 'stripe', amountCents, idempotencyKey: idempotencyKey.current });
+      const storageKey = `multigo.payment-attempt.${orderId}`;
+      let idempotencyKey = window.sessionStorage.getItem(storageKey);
+      if (!idempotencyKey) {
+        idempotencyKey = `order-${orderId}-${crypto.randomUUID()}`;
+        window.sessionStorage.setItem(storageKey, idempotencyKey);
+      }
+      const payment = await client.payments.create({ orderId, provider: 'stripe', amountCents, idempotencyKey });
+      if (payment.status === 'FAILED') window.sessionStorage.removeItem(storageKey);
       if (!payment.clientSecret) throw new Error(t('serverNoPaymentSession'));
       const s = await loadStripeImpl(publishableKey);
       if (!s) throw new Error(t('couldNotLoadPaymentLibrary'));

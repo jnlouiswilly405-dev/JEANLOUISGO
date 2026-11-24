@@ -16,6 +16,15 @@ This is a defensive state gate, not proof of production readiness. The Stripe
 adapter is sandbox-only; live processing, refunds, and payouts remain disabled.
 Checkout recovery and complete financial reconciliation remain release gates.
 
+For a pending Stripe attempt with a recorded reference, same-key replay
+retrieves the existing intent and verifies its reference, metadata, amount,
+currency and actionable status before returning its client secret. The secret
+is not stored. A pending attempt without a recorded reference may be retried
+with the same key only during the first 23 hours; older attempts require manual
+reconciliation rather than a potentially new intent. The customer app retains
+the attempt key in session storage for same-tab reloads, not across devices or
+closed browser sessions. Those recovery cases remain a release gate.
+
 Stripe's `payment_intent.payment_failed` can represent a retryable confirmation
 failure, so the existing attempt remains `PENDING` and prevents creation of a
 second attempt. A separate verified success for another payment or an unmatched

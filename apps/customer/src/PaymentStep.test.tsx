@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { SessionProvider } from '@multigo/app-shell';
@@ -50,6 +50,36 @@ describe('isTestPublishableKey', () => {
 });
 
 describe('PaymentStep (sandbox)', () => {
+  it('reuses the order attempt after remount without storing the client secret', async () => {
+    window.sessionStorage.clear();
+    const api = fakeApi();
+    const s = fakeStripe();
+    await mountStep(api, { publishableKey: 'pk_test_abc', loadStripeImpl: s.load });
+    await userEvent.click(screen.getByRole('button', { name: 'Pay by card' }));
+    await screen.findByRole('button', { name: 'Confirm payment' });
+    const first = api.calls.find((c) => c.path === '/api/payments')!.body.idempotencyKey;
+    expect(window.sessionStorage.getItem('multigo.payment-attempt.o-1')).toBe(first);
+    expect(JSON.stringify(window.sessionStorage)).not.toContain('pi_test_secret_abc');
+    cleanup();
+    await mountStep(api, { publishableKey: 'pk_test_abc', loadStripeImpl: s.load });
+    await userEvent.click(screen.getByRole('button', { name: 'Pay by card' }));
+    await screen.findByRole('button', { name: 'Confirm payment' });
+    expect(api.calls.filter((c) => c.path === '/api/payments')[1].body.idempotencyKey).toBe(first);
+  });
+
+  it('only rotates the saved attempt after the server reports it failed', async () => {
+    window.sessionStorage.clear();
+    const api = fakeApi({ id: 'pay-1', order_id: 'o-1', provider: 'stripe', status: 'FAILED', amount_cents: 2700 });
+    const s = fakeStripe();
+    await mountStep(api, { publishableKey: 'pk_test_abc', loadStripeImpl: s.load });
+    await userEvent.click(screen.getByRole('button', { name: 'Pay by card' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/did not return a payment session/);
+    const first = api.calls.find((c) => c.path === '/api/payments')!.body.idempotencyKey;
+    expect(window.sessionStorage.getItem('multigo.payment-attempt.o-1')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Pay by card' }));
+    expect(api.calls.filter((c) => c.path === '/api/payments')[1].body.idempotencyKey).not.toBe(first);
+  });
+
   it('refuses live and secret keys without calling the backend or loading Stripe', async () => {
     for (const key of ['pk_live_abc', 'sk_test_abc', undefined]) {
       const api = fakeApi();
