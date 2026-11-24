@@ -30,7 +30,27 @@ function Probe() {
   );
 }
 
+function DeliveryAddressProbe() {
+  const { t } = useLocalization();
+  return <p>{t('deliveryAddress')}</p>;
+}
+
 describe('localization', () => {
+  it.each([
+    ['en', 'Delivery address'],
+    ['fr', 'Adresse de livraison'],
+    ['ht', 'Adrès livrezon'],
+    ['es', 'Dirección de entrega'],
+    ['zh-CN', '配送地址'],
+  ])('renders the pilot delivery address label in %s', (language, expected) => {
+    render(
+      <LocalizationProvider storage={memoryStorage(language)}>
+        <DeliveryAddressProbe />
+      </LocalizationProvider>,
+    );
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
   it('detects supported device languages and falls back to English', () => {
     expect(detectLanguage(['de-DE', 'es-MX'])).toBe('es');
     expect(detectLanguage(['ht-HT'])).toBe('ht');

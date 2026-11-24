@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import Stripe from 'stripe';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
-import { createMerchant, createUser, getPool, insertOrder, orderStatus, startApi, type TestUser } from './helpers.js';
+import { api, createMerchant, createUser, getPool, insertOrder, orderStatus, startApi, type TestUser } from './helpers.js';
 
 const SECRET = 'whsec_integration_secret';
 const signer = new Stripe('sk_test_integration');
@@ -115,12 +116,87 @@ describe('Stripe sandbox webhook (signed, raw body)', () => {
     expect(await n(clearing, [p.orderId])).toBe(0);
   });
 
-  it('payment_failed marks the payment FAILED without paying the order or touching the ledger', async () => {
+  it('keeps a failed Stripe confirmation retryable without paying the order or touching the ledger', async () => {
     const p = await pendingPayment(1700);
     expect((await post(event(p, { type: 'payment_intent.payment_failed', received: 0 }))).body).toEqual({ duplicate: false });
-    expect(await paymentStatus(p.paymentId)).toBe('FAILED');
+    expect(await paymentStatus(p.paymentId)).toBe('PENDING');
     expect(await orderStatus(pool, p.orderId)).toBe('PENDING_PAYMENT');
     expect(await n(clearing, [p.orderId])).toBe(0);
+    const retry = await api(base, 'POST', '/api/payments', {
+      token: customer.token,
+      body: { orderId: p.orderId, provider: 'stripe', amountCents: p.total, idempotencyKey: `retry-${randomUUID()}` },
+    });
+    expect(retry.status).toBe(409);
+    expect(retry.body.error).toContain('PAYMENT_ATTEMPT_ALREADY_ACTIVE');
+    expect((await post(event(p))).status).toBe(200);
+    expect(await paymentStatus(p.paymentId)).toBe('SUCCEEDED');
+    expect(await n(clearing, [p.orderId])).toBe(1);
+  });
+
+  it('rejects a second captured intent for reconciliation without silently marking it succeeded', async () => {
+    const p = await pendingPayment(1800);
+    expect((await post(event(p))).status).toBe(200);
+    const otherPayment = randomUUID();
+    const otherIntent = `pi_test_${randomUUID().replace(/-/g, '')}`;
+    await pool.query(
+      "INSERT INTO payments(id,order_id,provider,provider_reference,amount_cents,status,idempotency_key) VALUES ($1,$2,'stripe',$3,$4,'PENDING',$5)",
+      [otherPayment, p.orderId, otherIntent, p.total, `int-stripe-${randomUUID()}`],
+    );
+    const res = await post(event({ ...p, paymentId: otherPayment, intentId: otherIntent }));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+    expect(await paymentStatus(otherPayment)).toBe('PENDING');
+    expect(await n('SELECT count(*)::int n FROM payment_events WHERE payment_id=$1', [otherPayment])).toBe(0);
+    expect(await n(clearing, [p.orderId])).toBe(1);
+  });
+
+  it('allows a new success event for the same reconciled payment after fulfillment', async () => {
+    const p = await pendingPayment(1900);
+    expect((await post(event(p))).status).toBe(200);
+    await pool.query("UPDATE orders SET status='DELIVERED' WHERE id=$1", [p.orderId]);
+    expect((await post(event(p))).status).toBe(200);
+    expect(await orderStatus(pool, p.orderId)).toBe('DELIVERED');
+    expect(await n(clearing, [p.orderId])).toBe(1);
+  });
+
+  it('rejects a replay with a mismatched existing clearing credit', async () => {
+    const p = await pendingPayment(2000);
+    expect((await post(event(p))).status).toBe(200);
+    await pool.query("UPDATE ledger_entries SET amount_cents=1 WHERE order_id=$1 AND account_type='PLATFORM_CLEARING' AND direction='CREDIT'", [p.orderId]);
+    const res = await post(event(p));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+    expect(await paymentStatus(p.paymentId)).toBe('SUCCEEDED');
+    expect(await n(clearing, [p.orderId])).toBe(1);
+  });
+
+  it('enforces one clearing credit per order at the database boundary', async () => {
+    const p = await pendingPayment(2100);
+    expect((await post(event(p))).status).toBe(200);
+    await expect(pool.query(
+      "INSERT INTO ledger_entries(order_id,account_type,direction,amount_cents,currency) VALUES($1,'PLATFORM_CLEARING','CREDIT',$2,'USD')",
+      [p.orderId, p.total],
+    )).rejects.toMatchObject({ code: '23505' });
+    expect(await n(clearing, [p.orderId])).toBe(1);
+  });
+
+  it('refuses to create the uniqueness index on historical duplicates without deleting them', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('CREATE TEMP TABLE ledger_entries (order_id UUID, account_type TEXT, direction TEXT) ON COMMIT DROP');
+      const orderId = randomUUID();
+      await client.query("INSERT INTO ledger_entries VALUES ($1,'PLATFORM_CLEARING','CREDIT'),($1,'PLATFORM_CLEARING','CREDIT')", [orderId]);
+      await client.query('SAVEPOINT before_index');
+      const migration = readFileSync(new URL('../../database/migrations/019_clearing_credit_unique.sql', import.meta.url), 'utf8');
+      await expect(client.query(migration)).rejects.toMatchObject({ code: '23505' });
+      await client.query('ROLLBACK TO SAVEPOINT before_index');
+      const rows = await client.query('SELECT count(*)::int AS n FROM ledger_entries');
+      expect(rows.rows[0].n).toBe(2);
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
   });
 
   it('ignores unrelated signed events', async () => {

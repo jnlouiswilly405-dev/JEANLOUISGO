@@ -143,7 +143,7 @@ grep -q "status IN ('PENDING','SUCCEEDED')" "$ROOT/backend/src/modules/payments/
 grep -q 'one active payment attempt per order' "$ROOT/backend/src/modules/payments/payment.service.test.ts"
 test -s "$ROOT/docs/PAYMENT_ONE_ACTIVE_ATTEMPT_GATE.md"
 # A success webhook cannot settle an order that is cancelled or otherwise closed.
-grep -q 'validatePaymentOrderState(payment.rows\[0\].order_status)' "$ROOT/backend/src/modules/payments/payment.service.ts"
+grep -q 'validatePaymentOrderState(current.order_status)' "$ROOT/backend/src/modules/payments/payment.service.ts"
 grep -q 'WEBHOOK_ORDER_STATE_BLOCKED' "$ROOT/backend/src/modules/payments/payment.service.ts"
 grep -q 'blocks payment finalization for cancelled' "$ROOT/backend/src/modules/payments/payment.service.test.ts"
 test -x "$ROOT/database/migrate.sh"

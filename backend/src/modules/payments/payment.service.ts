@@ -171,12 +171,29 @@ export async function handleWebhook(input: { provider: PaymentProvider; eventId:
       const adopted = await client.query("UPDATE payments SET provider_reference=$2 WHERE id=$1 AND status='PENDING' AND provider_reference IS NULL", [input.paymentId, input.providerReference]);
       if (adopted.rowCount !== 1) throw new Error('WEBHOOK_PROVIDER_REFERENCE_ADOPTION_FAILED');
     }
-    if (input.status === 'SUCCEEDED') validatePaymentOrderState(payment.rows[0].order_status);
-    if (input.status === 'SUCCEEDED' && payment.rows[0].status !== 'SUCCEEDED') {
-      await client.query("UPDATE payments SET status='SUCCEEDED' WHERE id=$1",[input.paymentId]);
-      await client.query("UPDATE orders SET status='PAID' WHERE id=$1 AND status='PENDING_PAYMENT'",[payment.rows[0].order_id]);
-      await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) SELECT p.order_id,'PLATFORM_CLEARING',NULL,'CREDIT',p.amount_cents,o.currency FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1 AND NOT EXISTS (SELECT 1 FROM ledger_entries WHERE order_id=p.order_id AND account_type='PLATFORM_CLEARING' AND direction='CREDIT')`,[input.paymentId]);
-    } else if (input.status === 'FAILED') {
+    if (input.status === 'SUCCEEDED') {
+      const current = payment.rows[0];
+      const credits = await client.query<{ amount_cents: number; currency: string }>(
+        "SELECT amount_cents,currency FROM ledger_entries WHERE order_id=$1 AND account_type='PLATFORM_CLEARING' AND direction='CREDIT'",
+        [current.order_id],
+      );
+      if (current.status === 'SUCCEEDED') {
+        if (credits.rowCount !== 1 || credits.rows[0].amount_cents !== current.amount_cents ||
+            credits.rows[0].currency.trim().toUpperCase() !== current.currency.trim().toUpperCase()) {
+          throw new Error('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+        }
+      } else {
+        validatePaymentOrderState(current.order_status);
+        const otherSuccess = await client.query(
+          "SELECT 1 FROM payments WHERE order_id=$1 AND id<>$2 AND status='SUCCEEDED' LIMIT 1",
+          [current.order_id, input.paymentId],
+        );
+        if (otherSuccess.rowCount || credits.rowCount) throw new Error('PAYMENT_LEDGER_RECONCILIATION_REQUIRED');
+        await client.query("UPDATE payments SET status='SUCCEEDED' WHERE id=$1",[input.paymentId]);
+        await client.query("UPDATE orders SET status='PAID' WHERE id=$1 AND status='PENDING_PAYMENT'",[current.order_id]);
+        await client.query(`INSERT INTO ledger_entries(order_id,account_type,account_id,direction,amount_cents,currency) SELECT p.order_id,'PLATFORM_CLEARING',NULL,'CREDIT',p.amount_cents,o.currency FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=$1`,[input.paymentId]);
+      }
+    } else if (input.status === 'FAILED' && input.provider !== 'stripe') {
       await client.query("UPDATE payments SET status='FAILED' WHERE id=$1 AND status <> 'SUCCEEDED'",[input.paymentId]);
     }
     await client.query('COMMIT');
