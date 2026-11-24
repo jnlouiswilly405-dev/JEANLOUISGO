@@ -191,12 +191,16 @@ describe('order status transitions', () => {
     const user = await createUser(pool, 'DRIVER');
     const profile = await createDriverProfile(pool, user.id, 'BUSY');
     const id = await insertOrder(pool, { customerId: customerA.id, merchantId, status: 'IN_TRANSIT', driverProfileId: profile, paid: true });
-    const bypass = await api(base, 'POST', `/api/orders/${id}/status`, { token: user.token, body: { status: 'DELIVERED' } });
-    expect(bypass.status).toBe(409);
-    expect(await orderStatus(pool, id)).toBe('IN_TRANSIT');
-    const res = await api(base, 'POST', `/api/orders/${id}/delivery`, { token: user.token, body: { action: 'DELIVERED' } });
-    expect(res.status).toBe(200);
-    expect(await orderStatus(pool, id)).toBe('DELIVERED');
+    try {
+      const bypass = await api(base, 'POST', `/api/orders/${id}/status`, { token: user.token, body: { status: 'DELIVERED' } });
+      expect(bypass.status).toBe(409);
+      expect(await orderStatus(pool, id)).toBe('IN_TRANSIT');
+      const res = await api(base, 'POST', `/api/orders/${id}/delivery`, { token: user.token, body: { action: 'DELIVERED' } });
+      expect(res.status).toBe(200);
+      expect(await orderStatus(pool, id)).toBe('DELIVERED');
+    } finally {
+      await pool.query('DELETE FROM event_outbox WHERE aggregate_id=$1', [id]);
+    }
   });
 
   it('prevents administrative payment bypass and supports owner-only unpaid cancellation', async () => {
