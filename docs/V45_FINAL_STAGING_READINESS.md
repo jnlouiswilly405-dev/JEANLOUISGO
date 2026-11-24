@@ -12,10 +12,10 @@ for every check. A failed or inconclusive check blocks release.
   `fix/v45-pilot-review-20261124`, with a clean worktree and a verified recovery
   package. Do not substitute `main` or an unreviewed branch.
 - [ ] Confirm the candidate's PostgreSQL CI and Stripe Sandbox E2E are green.
-  At commit `51b8d54ab606a57b1bd4c1493ba88b1563d74769`, both succeeded:
-  [PostgreSQL CI](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45425818941)
+  At commit `fecd31d278866f3da4fbf4de8d42de47ce13d16a`, both succeeded:
+  [PostgreSQL CI](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45431341372)
   and
-  [Stripe Sandbox E2E](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45425785147).
+  [Stripe Sandbox E2E](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45431391224).
   They ran with the workflow's explicit `defer_migration_019=true` option;
   migration 019 was separately validated on disposable PostgreSQL 16.
 - [ ] Record approvals and named owners for staging change, database, finance
@@ -76,9 +76,11 @@ No historical staging or production data was accessed or audited.
   succeeded, payment-failed, and canceled. Store the endpoint's `whsec_...`
   secret only in the staging secret manager; never reuse a local Stripe CLI
   secret or print it.
-- [ ] Send a Stripe test event to the public endpoint from the Dashboard.
-  Confirm TLS delivery and a successful 2xx response for a valid signature;
-  an invalid signature must be rejected. Inspect redacted event IDs and state
+- [ ] Confirm an invalid signature is rejected without changing state. For a
+  valid-signature success check use the application-created test intent below:
+  a generic Stripe sample may lack required UUID metadata and legitimately
+  return `WEBHOOK_PAYMENT_ID_MISSING`. An ignored event returning 2xx is not
+  evidence of payment reconciliation. Inspect redacted event IDs and state
   transitions without logging secrets, client secrets, or full payloads.
 - [ ] Place a synthetic test-mode order using an approved Stripe test card.
   Verify it remains unpaid until the signed webhook is processed, then reaches
@@ -189,7 +191,7 @@ permissions, retention, RPO/RTO, or production restore process.
 The normal backend integration run reports one skipped test because
 `stripe-sandbox-e2e.int.ts` is opt-in and requires `STRIPE_SANDBOX_E2E=1` plus an
 `sk_test_` key. The dedicated protected GitHub Sandbox E2E workflow passed at
-`51b8d54` (run linked above); it creates a real Stripe test-mode intent and
+`fecd31d` (run linked above); it creates a real Stripe test-mode intent and
 confirms it with a test card, but signs the webhook locally with a throwaway
 secret. It does **not** prove Stripe can deliver to the public staging webhook
 or exercise the browser Payment Element; those are manual gates above.
@@ -203,7 +205,7 @@ any unrecorded MacBook-only changes cannot be established. If the original
 checkout becomes available, compare it read-only before applying or merging
 anything.
 
-## Release readiness at `51b8d54`
+## Release readiness at `fecd31d`
 
 **Status: staging preparation complete; staging execution and production
 readiness remain blocked.** CI passed on the dedicated review branch and

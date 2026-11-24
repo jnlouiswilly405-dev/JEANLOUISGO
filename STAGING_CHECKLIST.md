@@ -5,6 +5,8 @@ This checklist is for a staging environment only. Do not use production credenti
 For the detailed V45 execution procedures, acceptance evidence, migration 019
 gate, public Stripe webhook checks, GPS/language matrix, and backup/restore/
 rollback drill, see [V45 final staging readiness](docs/V45_FINAL_STAGING_READINESS.md).
+For the proposed DigitalOcean topology and required owner authorizations, see
+[DigitalOcean staging preparation](docs/V45_DIGITALOCEAN_STAGING.md).
 
 ## Environment isolation and security
 
@@ -12,7 +14,7 @@ rollback drill, see [V45 final staging readiness](docs/V45_FINAL_STAGING_READINE
 - [ ] Configure the reverse proxy for the staging service, redirect HTTP to HTTPS, and verify certificate renewal.
 - [ ] Use a separate staging database and persistent data volume; confirm staging cannot access production data or services.
 - [ ] Use synthetic test accounts and data only.
-- [ ] Store `ADMIN_API_TOKEN` and delivery-signing keys in the hosting platform's secret manager. Generate staging-only values, restrict access, and ensure values are not logged or committed.
+- [ ] Store the staging-only `JWT_SECRET`, database credentials, and approved Stripe test secrets in the hosting platform's secret manager. Restrict access and ensure values are not logged or committed.
 - [ ] Configure the protected GitHub environment `stripe-sandbox` with the test-only `STRIPE_TEST_SECRET_KEY`; never print or commit its value. Verify the workflow refuses keys that are not Stripe test-mode keys.
 
 ## Staging verification
