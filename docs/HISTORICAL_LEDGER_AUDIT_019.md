@@ -16,13 +16,17 @@ review.
    Prefer running on a protected restored snapshot. Restrict query output to
    the authorized operators; do not export customer, address, or payment
    instrument data.
-3. Connect with `psql` and start a read-only transaction. Stop if the session
-   cannot enforce read-only mode:
+3. Connect with `psql` and start a consistent, read-only transaction. Stop
+   if the session cannot enforce read-only mode. Repeatable read keeps these
+   queries on the same database snapshot; it does not prevent later changes:
 
    ```sql
-   BEGIN TRANSACTION READ ONLY;
+   BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+   SHOW transaction_read_only;
    ```
 
+   Confirm the output is `on`, the connection is to the authorized snapshot,
+   and the authenticated role is the approved least-privilege read-only role.
 4. Run only the aggregate and mismatch queries below. Save counts and
    redacted order identifiers in the approved audit record; never alter rows
    to make the migration pass.
@@ -101,15 +105,35 @@ FROM (
 ) AS per_order;
 ```
 
+Check clearing credits excluded by the index because they have no order ID:
+
+```sql
+SELECT count(*) AS unlinked_clearing_credit_count
+FROM ledger_entries
+WHERE account_type = 'PLATFORM_CLEARING'
+  AND direction = 'CREDIT'
+  AND order_id IS NULL;
+```
+
+These rows do not prevent index creation, but require finance review; do not
+assume they are valid or change them merely to satisfy the migration.
+
 ## Decision gate
 
 Any duplicate, amount/currency mismatch, multiple capture, credit without a
-succeeded payment, or incomplete capture/ledger pair is a stop condition.
+succeeded payment, unlinked clearing credit, or incomplete capture/ledger pair
+is a stop condition until finance has reviewed and resolved or explicitly
+accounted for it.
 Reconcile against provider records with the finance owner; document the
 resolution separately under the approved change process. Do not delete,
 rewrite, or net ledger entries merely to make migration 019 succeed.
 
 After review, take another verified backup and have the database owner approve
-a maintenance window. Apply migration 019 only as a separate authorized
+a maintenance window. A snapshot audit alone cannot establish that the live
+target has remained unchanged: coordinate with the owner to quiesce writes or
+otherwise establish an approved consistent cutover, recheck the target in that
+window, and stop if new anomalies appear. The unique index itself fails if
+duplicates exist at creation, but it does not enforce every reconciliation
+check above. Apply migration 019 only as a separate authorized
 operation, then verify the index exists and run the post-migration duplicate
 count query. This implementation task does not run that migration.

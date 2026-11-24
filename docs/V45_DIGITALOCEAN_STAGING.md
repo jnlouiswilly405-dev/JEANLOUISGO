@@ -22,6 +22,54 @@ first. Keep production, live payments, refunds, Connect, and payouts disabled.
 No action above is implied by approval of this preparation document. Record
 the approver, change ticket, time window and exact target before each action.
 
+## Proposed monthly budget, USD before tax
+
+Price research: 2026-11-24. The following is an **exact arithmetic proposal
+for these assumptions**, not an account-specific quote or final bill. Confirm
+the selected region, plan, billing screen and pricing before authorizing any
+resource.
+
+| Item | Proposed configuration | Monthly |
+| --- | --- | ---: |
+| Bundled Basic Droplet | `s-2vcpu-2gb`: 2 shared vCPU, 2 GiB RAM, 60 GiB disk, continuously running | $18.00 |
+| Droplet backup | Basic weekly plan, 20% of $18.00 | $3.60 |
+| Managed PostgreSQL Standard | 1 GiB, single node, entry-level plan, no extra storage or standby | $15.00 |
+| Cloud Firewall, DigitalOcean DNS and monitoring | Basic services; use an already-owned domain | $0.00 |
+| TLS certificate | Let's Encrypt, assuming approved domain control and ACME | $0.00 |
+| **Proposed base total** | **$18.00 + $3.60 + $15.00** | **$36.60** |
+
+This assumes no snapshots, extra storage, second Droplet/database, paid logging
+or secret manager, support plan, paid DNS/domain renewal, load balancer,
+billable transfer overage or tax. Any of these, and temporary restore/fork
+resources, can add charges. One-node PostgreSQL and one Droplet are not highly
+available; this is a small staging proposal, not production capacity or a
+performance guarantee. The managed database offers daily point-in-time backups
+within its documented seven-day window; confirm the selected edition and
+account's included backup terms. Weekly Droplet backups are not database
+backups. Build on a suitably provisioned CI runner if the 2 GiB host cannot
+build the apps; transfer only an approved immutable artifact.
+
+The cited PostgreSQL pricing page starts a Standard single-node 1 GiB cluster
+at $15.00, while another current managed-database pricing table shows a $15.15
+1 GiB row for a differently described plan. **Do not assume which price or
+plan is offered to this account.** If the approved PostgreSQL SKU is instead
+$15.15, the same base arithmetic becomes **$36.75/month**; other differences
+need a new quote. Availability, tax, charges for provider restore drills and
+final billed amounts must be confirmed in the owner's DigitalOcean console.
+The owner must choose and approve a spending cap, including a separate
+temporary-drill allowance; no paid resources are authorized by this proposal.
+
+Sources: [Droplet price](https://www.digitalocean.com/pricing/droplets),
+[bundled Droplet billing](https://docs.digitalocean.com/products/droplets/details/pricing/),
+[backup pricing](https://docs.digitalocean.com/products/backups/details/pricing/),
+[PostgreSQL pricing](https://docs.digitalocean.com/products/databases/postgresql/details/pricing/),
+[managed database table](https://www.digitalocean.com/pricing/managed-databases),
+[PostgreSQL backup features](https://docs.digitalocean.com/products/databases/postgresql/details/features/),
+[DNS pricing](https://docs.digitalocean.com/products/networking/dns/details/pricing/),
+[monitoring pricing](https://docs.digitalocean.com/products/monitoring/details/pricing/),
+[Droplet bandwidth billing](https://docs.digitalocean.com/platform/billing/bandwidth/),
+and [Let's Encrypt](https://letsencrypt.org/).
+
 ## Proposed host and network configuration
 
 1. After approval, create an isolated staging project/VPC and host using
@@ -219,7 +267,10 @@ limits before choosing a recovery point. A Droplet disk backup is not a
 substitute for a consistent managed-database backup, nor does a PostgreSQL
 backup preserve app releases, secrets, DNS, firewall or certificate state.
 
-Restore a known backup to a **new isolated** staging database/cluster; verify
+Fork a known backup to a **new isolated** staging database/cluster, not an
+in-place restore of the source; confirm that the selected provider operation
+really creates a separate cluster and obtain approval for its temporary cost.
+Verify
 backup identity, schema, redacted counts and representative synthetic payment
 and ledger invariants, correct CA/trusted sources, and service readiness
 without exposing the restored data. Restore a Droplet backup to an isolated
@@ -246,9 +297,12 @@ retention/cleanup is authorized. Provider drills remain **not executed**.
   does not verify public Stripe delivery. Re-run/check CI for the final
   approved SHA.
 - Migration 019 and synthetic backup/restore mechanics were checked in
-  disposable PostgreSQL 16 as described in the linked acceptance plan. No
-  provider account, staging database, host, real device or historical ledger
-  has been accessed for this preparation.
+  disposable PostgreSQL 16 as described in the linked acceptance plan. On
+  2026-11-24, the documented audit queries also ran as a read-only role against
+  an isolated synthetic PostgreSQL 16 dataset: a duplicate and unlinked credit
+  were detected, and the read-only transaction rejected an attempted insert.
+  No provider account, staging database, host, real device or historical
+  ledger has been accessed for this preparation.
 - The preserved recovery package SHA-256 is
   `fe67abc85d00a250211be80da251f84f692ae28557ee973617482787a8241a98`.
   Its included branch bundle ends at `a6e07bb`, not at this later documentation
@@ -261,5 +315,44 @@ retention/cleanup is authorized. Provider drills remain **not executed**.
 Provider references (confirm current plan/edition behavior before approval):
 [DigitalOcean PostgreSQL security](https://docs.digitalocean.com/products/databases/postgresql/how-to/secure/),
 [PostgreSQL restore](https://docs.digitalocean.com/products/databases/postgresql/how-to/restore-from-backups/),
+[PostgreSQL fork](https://docs.digitalocean.com/products/databases/postgresql/how-to/fork-clusters/),
 [Cloud Firewall rules](https://docs.digitalocean.com/products/networking/firewalls/how-to/configure-rules/),
 [Droplet backup restore](https://docs.digitalocean.com/products/backups/how-to/create-and-restore/).
+
+## Final staging execution checklist
+
+The owner's approval of technical review is **not** approval to provision,
+incur charges, access protected data, deploy or change DNS/Stripe settings.
+Each item stays unchecked until its evidence is recorded.
+
+- [ ] **Owner:** choose region and account/project, confirm the console's
+  Droplet/database/backup prices and retention, approve budget plus a cap for
+  temporary restore resources, and choose named operator and reviewers.
+- [ ] **Owner/domain administrator:** approve five actual hostnames and DNS/
+  certificate changes. **Owner:** approve the exact staging commit, date,
+  isolated synthetic data, SSH/VPN sources, service and secret access.
+- [ ] **Database/data owner and finance reviewer:** authorize any protected
+  historical snapshot and read-only access. Review the
+  [audit procedure](HISTORICAL_LEDGER_AUDIT_019.md), findings and consistent
+  cutover plan. Separately approve backup and Migration 019 after sign-off;
+  neither is authorized by technical review.
+- [ ] **Approved operator:** only after resource authorization, verify firewall
+  isolation, no public API port 4000, database trusted sources and certificate
+  identity, service secrets, exact app origins, TLS renewal and health. Capture
+  redacted network/TLS/configuration evidence and candidate SHA.
+- [ ] **Stripe account owner/operator:** separately approve and configure the
+  test-mode endpoint and keys. Run application-created test-intent success,
+  failure, cancellation, duplicate-delivery and signature-rejection checks;
+  record redacted event IDs, HTTP outcomes and reconciled ledger counts.
+- [ ] **Device owners/testers:** consent to controlled GPS checks on the
+  approved physical devices; record permission, stop/recovery and access-control
+  outcomes without exposing route history. Test the five locales on all four
+  apps using the linked acceptance matrix, with reviewer and evidence for each.
+- [ ] **Backup and database owners:** approve and fund isolated provider
+  database fork and Droplet restore drills. Check point-in-time, integrity,
+  restored schema/data invariants, isolation and actual RPO/RTO; document
+  rollback/traffic-switch approval and reconcile events after the backup point.
+- [ ] **Release owner:** collect CI links for the final candidate, audit and
+  test evidence, incident contacts, remaining risks and written approvals.
+  Staging acceptance is not permission to merge to `main`, deploy production,
+  or enable live payments, refunds, Connect or payouts.

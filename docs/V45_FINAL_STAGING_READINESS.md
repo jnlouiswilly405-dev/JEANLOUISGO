@@ -37,14 +37,17 @@ routine deployment step.
   URLs, credentials, customer details, or raw provider payloads in logs or
   reports.
 - [ ] Connect with an approved read-only account; verify
-  `BEGIN TRANSACTION READ ONLY` succeeds. Run the duplicate-credit,
+  `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY` succeeds and
+  `transaction_read_only` is `on`. Run the duplicate-credit, unlinked-credit,
   succeeded-payment/credit pairing, amount/currency mismatch, and aggregate
   count queries from the linked procedure. Save only approved redacted findings.
 - [ ] Stop on every anomaly. A finance owner must reconcile against provider
   records and document an approved resolution. Never delete, rewrite, net, or
   fabricate ledger records to make the index pass.
 - [ ] Obtain written finance and database-owner sign-off on zero unresolved
-  anomalies and a maintenance window before applying migration 019.
+  anomalies and a maintenance window before applying migration 019. Quiesce
+  writes or use another owner-approved consistent cutover and recheck the
+  actual target; a historical snapshot does not prove current data is clean.
 - [ ] In staging, verify the expected schema version, apply the normal ordered
   migration once, and verify
   `idx_ledger_one_clearing_credit_per_order` exists with its exact partial
