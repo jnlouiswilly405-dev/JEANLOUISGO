@@ -22,6 +22,61 @@ first. Keep production, live payments, refunds, Connect, and payouts disabled.
 No action above is implied by approval of this preparation document. Record
 the approver, change ticket, time window and exact target before each action.
 
+## Region and GitHub-to-DigitalOcean integration
+
+The requested region is New York. Use **NYC1 as the proposed target** for the
+Droplet and PostgreSQL cluster because both are listed as available there;
+availability and the exact database plan must still be confirmed in the
+owner's control panel before resource approval. Keep the staging app, database
+and database network in the same approved region/VPC where supported; verify
+backup location and provider support separately.
+
+The current workflows are CI/test-only and have `permissions: contents: read`.
+They do not reference a DigitalOcean credential, and there is no DigitalOcean
+deployment workflow in the review commit. This review did not establish the
+absence of credentials in every repository or environment secret. Do not add a
+DO token to CI, repository secrets or environment secrets during preparation.
+
+If a later, separately approved deployment integration is selected:
+
+1. Create a GitHub Actions environment named `digitalocean-staging`, restrict
+   deployment branches to the dedicated review/release branch, and require a
+   named human reviewer. Keep it separate from `stripe-sandbox`.
+2. Do not let `pull_request` or fork workflows access deployment credentials.
+   Use a manually dispatched, protected job against an explicit reviewed SHA;
+   no automatic push-to-deploy or `main` trigger. Set minimum `GITHUB_TOKEN`
+   permissions and concurrency; pin third-party actions to reviewed immutable
+   commit SHAs.
+3. DigitalOcean's documented standard pattern uses a PAT saved as a GitHub
+   secret. If this path is approved, the account owner—not this preparation
+   session—creates a dedicated, expiring custom-scope token, reviews the
+   current resource-specific scope list for the *exact* API calls, stores it
+   only as the environment secret, and sets a rotation/revocation owner. Avoid
+   global `api:write` / Full Access unless the owner explicitly accepts that
+   broad authority. Do not print the token or put it in `doctl` command-line
+   arguments, build logs, an issue, or a committed file.
+4. DigitalOcean has described OIDC/workload federation through a separately
+   deployed proxy/PoC. That is not a ready-made native GitHub Actions credential
+   exchange for this repo. Do not assume GitHub's `id-token: write` alone
+   authenticates to DigitalOcean. Any federation proxy, trust policy, token
+   issuer/audience/subject rules and proxy hosting require a separate security
+   design and approval.
+5. Before any authorized job, review its diff to prove it cannot create/delete
+   paid resources, modify DNS/firewalls/database or deploy production. The
+   current task forbids resource creation and deployment, so no such job is
+   being added or run.
+
+For coordination, provide the independent infrastructure reviewer (including
+ChatGPT Work if the owner has a separate channel) the handoff items: candidate
+SHA, proposed NYC1 placement, $36.60/$36.75 cost assumptions, no-resource
+constraint, firewall and TLS acceptance criteria, test-only secret boundary,
+database TLS/backup gates, and CI evidence below. Ask them to report findings
+and evidence only—no DO API calls, DNS changes, secret changes, or deployment.
+This session has no tool or authenticated channel to message ChatGPT Work
+directly, so the owner must relay this handoff, including the final pushed
+review-branch SHA and its CI links. Ask the reviewer to check the protected
+historical audit and cutover requirements for migration 019 as well.
+
 ## Proposed monthly budget, USD before tax
 
 Price research: 2026-11-24. The following is an **exact arithmetic proposal
@@ -222,9 +277,18 @@ those CI workflows; it does not change the migration script.
 Before migration 019 on any historical database, follow
 [`HISTORICAL_LEDGER_AUDIT_019.md`](HISTORICAL_LEDGER_AUDIT_019.md) using an
 approved read-only snapshot, verify a backup and obtain finance/database-owner
-sign-off. Confirm schema compatibility with the chosen binary and record
-schema version, index predicate, and redacted duplicate count. A synthetic
-audit is not evidence that historical data is clean.
+sign-off. Identify the authorized target, schema and read-only operator; review
+duplicate, unlinked and mismatched credits and multiple captures, without
+deleting or rewriting history. Any anomaly requires finance review. Confirm
+schema compatibility with the chosen binary and record schema version, index
+predicate, and redacted findings. A synthetic audit is not evidence that
+historical data is clean.
+
+Before any separately authorized application of 019, verify a fresh backup,
+approve a maintenance window, quiesce writes or establish an approved
+consistent cutover, and recheck the actual target for new anomalies. After
+application, verify the index and duplicate count. The index does not enforce
+every audit invariant. This preparation authorizes no migration execution.
 
 ## Public sandbox and device acceptance
 
@@ -290,12 +354,13 @@ retention/cleanup is authorized. Provider drills remain **not executed**.
 
 ## Evidence and remaining blockers
 
-- Review candidate `fecd31d278866f3da4fbf4de8d42de47ce13d16a`:
-  [PostgreSQL CI](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45431341372)
-  and [Stripe Sandbox E2E](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45431391224)
-  passed with 019 deferred in CI. The Sandbox E2E signs a local webhook; it
-  does not verify public Stripe delivery. Re-run/check CI for the final
-  approved SHA.
+- Review candidate `857c8b1a983e2399a661ddbf77b32fd864b9c5f2`:
+  [PostgreSQL CI](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45436882748),
+  [Stripe Sandbox E2E](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45436890112),
+  and [checklist integrity](https://github.com/jnlouiswilly405-dev/JEANLOUISGO/actions/runs/45436923044)
+  passed. The PostgreSQL and Sandbox runs deferred 019. The Sandbox E2E signs
+  a local webhook; it does not verify public Stripe delivery. Re-run/check CI
+  for the final approved SHA, including any subsequent documentation commit.
 - Migration 019 and synthetic backup/restore mechanics were checked in
   disposable PostgreSQL 16 as described in the linked acceptance plan. On
   2026-11-24, the documented audit queries also ran as a read-only role against
