@@ -2,6 +2,10 @@
 
 This checklist is for a staging environment only. Do not use production credentials, real customer data, or real payment credentials.
 
+For the detailed V45 execution procedures, acceptance evidence, migration 019
+gate, public Stripe webhook checks, GPS/language matrix, and backup/restore/
+rollback drill, see [V45 final staging readiness](docs/V45_FINAL_STAGING_READINESS.md).
+
 ## Environment isolation and security
 
 - [ ] Use a dedicated staging domain and confirm its DNS points to the staging host.
@@ -29,6 +33,15 @@ This checklist is for a staging environment only. Do not use production credenti
 - [ ] Record test evidence, build/version, date, and owners for each completed staging check.
 - [ ] Do not declare production readiness until every staging check passes, payment reconciliation is verified, and backup, monitoring, and rollback owners are assigned.
 
-## Checks reported as already completed locally
+## Checks verified outside staging
 
-The project owner reported local tests, a container build, checkout/courier dispatch, and backup/restore as passing. These reports are not a substitute for running and recording the relevant checks against the isolated staging environment above.
+The review branch at `51b8d54` passed PostgreSQL CI and the protected Stripe
+Sandbox E2E workflow. Migration 019 and synthetic backup/restore/rollback
+mechanics were also validated in isolated PostgreSQL 16 databases. These checks
+do not certify an actual staging deployment, historical-ledger audit,
+public-webhook delivery, physical-device GPS, or provider-managed backup/
+restore/rollback.
+
+Do not mark staging checks complete based only on local tests or these isolated
+drills. Record staging-specific evidence and owners against every applicable
+gate in the detailed plan before declaring release readiness.
